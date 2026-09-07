@@ -1,0 +1,912 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "prediction" %}
+{% block title %}New Prediction - Hepato AI{% endblock %}
+
+{% macro num_field(name, label, unit, step="0.01", col="col-md-3") %}
+  {% set err = field_errors.get(name) if field_errors else None %}
+  <div class="{{ col }}">
+    <label class="form-label-custom" for="f-{{ name }}">
+      {{ label }}{% if unit %} <span class="text-muted">({{ unit }})</span>{% endif %}
+    </label>
+    <input type="number" step="{{ step }}" id="f-{{ name }}" name="{{ name }}"
+           class="form-control form-control-custom {{ 'field-invalid' if err }}"
+           value="{{ form_data.get(name, '') if form_data else '' }}"
+           {% if err %}aria-invalid="true" aria-describedby="e-{{ name }}"{% endif %}
+           required>
+    {% if err %}<span class="field-error" id="e-{{ name }}">{{ err }}</span>{% endif %}
+  </div>
+{% endmacro %}
+
+{% macro choice_field(name, label, options, col="col-md-3") %}
+  {% set err = field_errors.get(name) if field_errors else None %}
+  {% set chosen = form_data.get(name, '') if form_data else '' %}
+  <div class="{{ col }}">
+    <label class="form-label-custom" for="f-{{ name }}">{{ label }}</label>
+    <select id="f-{{ name }}" name="{{ name }}"
+            class="form-select form-select-custom {{ 'field-invalid' if err }}"
+            {% if err %}aria-invalid="true" aria-describedby="e-{{ name }}"{% endif %}
+            required>
+      <option value="" {{ 'selected' if not chosen }} disabled>Select</option>
+      {% for value, text in options %}
+        <option value="{{ value }}" {{ 'selected' if chosen == value }}>{{ text }}</option>
+      {% endfor %}
+    </select>
+    {% if err %}<span class="field-error" id="e-{{ name }}">{{ err }}</span>{% endif %}
+  </div>
+{% endmacro %}
+
+{% block dashboard_content %}
+
+<div class="page-header">
+  <div>
+    <h1>New Risk Assessment</h1>
+    <p>Upload a lab report image for instant analysis, or enter values manually.</p>
+  </div>
+  {% if result %}
+  <a href="{{ url_for('prediction') }}" class="btn btn-outline-custom">
+    <i class="bi bi-plus-lg"></i> Start Another
+  </a>
+  {% endif %}
+</div>
+
+{% if model_error %}
+<div class="alert alert-danger">
+  <strong><i class="bi bi-exclamation-octagon-fill"></i> Model unavailable.</strong>
+  {{ model_error }}
+</div>
+{% else %}
+
+{# ---- Results view (shown after prediction) ---- #}
+{% if result %}
+<div class="row g-4">
+  <div class="col-lg-7">
+    {# Show a summary of the input values used #}
+    <div class="glass-card p-4 mb-3">
+      <h6 class="fw-bold mb-3"><i class="bi bi-clipboard-data text-primary"></i> Input Values Used</h6>
+      <div class="row g-2">
+        {% set inputs = result.clinical_inputs() %}
+        {% for key, val in inputs.items() %}
+        <div class="col-6 col-md-4">
+          <div class="d-flex justify-content-between small py-1 border-bottom">
+            <span class="text-muted">{{ (field_meta.get(key, {}).label) or key }}</span>
+            <span class="fw-semibold">{{ val }}{% if field_meta.get(key, {}).unit %} <span class="text-muted">{{ field_meta[key].unit }}</span>{% endif %}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="result-card {{ 'high-risk' if result.result == 'High Risk' else 'low-risk' }}">
+      <i class="bi {{ 'bi-exclamation-triangle-fill' if result.result == 'High Risk' else 'bi-check-circle-fill' }} fs-1"></i>
+      <h3 class="fw-bold mt-2">{{ result.result }}</h3>
+      <div class="confidence-ring my-2">{{ probability_pct }}%</div>
+      <p class="mb-0">Confidence Score</p>
+      <hr class="border-light">
+      <p class="mb-0">Risk Band: <strong>{{ result.risk_level }}</strong></p>
+      <p class="mb-0 small opacity-75">{{ result.model_name }}</p>
+    </div>
+
+    <div class="d-flex gap-2 mt-3">
+      <a href="{{ url_for('export_pdf', prediction_id=result.id) }}" class="btn btn-primary-custom flex-fill">
+        <i class="bi bi-file-earmark-pdf"></i> PDF Report
+      </a>
+      <a href="{{ url_for('prediction_detail', prediction_id=result.id) }}" class="btn btn-outline-custom flex-fill">
+        <i class="bi bi-eye"></i> Full Detail
+      </a>
+    </div>
+
+    {% if scores %}
+    <div class="glass-card p-4 mt-3">
+      <h6 class="fw-bold mb-1">Established Clinical Scores</h6>
+      <p class="text-muted small mb-3">
+        Deterministic literature formulas, computed independently of the model &mdash; use them to
+        sanity-check the prediction.
+      </p>
+      <div class="score-grid">
+        {% for key in ['meld', 'fib4', 'apri', 'child_pugh'] %}
+          {% set s = scores[key] %}
+          <div class="score-tile">
+            <div class="score-name">{{ s.label }}</div>
+            <div class="score-value">{{ s.value if s.value is not none else 'N/A' }}</div>
+            <div class="score-band text-primary">{{ s.band }}</div>
+            <div class="score-meaning">{{ s.meaning }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if explanation %}
+    <div class="glass-card p-4 mt-3">
+      <h6 class="fw-bold mb-1">What Drove This Prediction</h6>
+      <p class="text-muted small mb-3">
+        Each value was re-scored against a typical patient's to measure how much it moved this
+        patient's risk.
+      </p>
+      {% set max_impact = explanation | map(attribute='impact') | map('abs') | max %}
+      {% for item in explanation %}
+        {% set width = (item.impact | abs / max_impact * 48) if max_impact else 0 %}
+        <div class="driver-row">
+          <div>
+            <div class="driver-label">{{ item.label }}</div>
+            <div class="driver-sub">
+              {{ item.patient_value }} {{ item.unit }} vs typical {{ item.typical_value }}
+            </div>
+          </div>
+          <div class="driver-track">
+            <div class="driver-fill {{ 'up' if item.impact > 0 else 'down' }}"
+                 style="width: {{ width | round(1) }}%"></div>
+          </div>
+          <div class="driver-value {{ 'up' if item.impact > 0 else 'down' }}">
+            {{ '%+.1f'|format(item.impact_pct) }}%
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if abnormal %}
+    <div class="glass-card p-4 mt-3">
+      <h6 class="fw-bold mb-3">Laboratory Panel vs Reference Range</h6>
+      <table class="panel-table">
+        <thead>
+          <tr><th>Parameter</th><th>Value</th><th>Reference</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for field, flag in abnormal.items() %}
+          <tr>
+            <td>{{ flag.label }}</td>
+            <td class="fw-semibold">{{ flag.value }} <span class="text-muted small">{{ flag.unit }}</span></td>
+            <td class="text-muted small">{{ flag.range[0] }} &ndash; {{ flag.range[1] }}</td>
+            <td><span class="status-pill status-{{ flag.status }}">{{ flag.status | upper }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    {% if top_features %}
+    <div class="glass-card p-4 mt-3">
+      <h6 class="fw-bold mb-1">Model's Overall Feature Importance</h6>
+      <p class="text-muted small mb-3">Learned across the whole training set, not specific to this patient.</p>
+      <ul class="list-unstyled mb-0">
+        {% for feature in top_features %}
+        <li class="d-flex justify-content-between align-items-center py-2 border-bottom">
+          <span>{{ feature.label }}</span>
+          <span class="text-muted">{{ feature.importance_pct }}%</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <div class="glass-card p-4 mt-3">
+      <h6 class="fw-bold">Clinician Notes</h6>
+      <form method="POST" action="{{ url_for('save_notes', prediction_id=result.id) }}"
+            data-show-loading="false">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="visually-hidden" for="notes-field">Clinician notes</label>
+        <textarea id="notes-field" name="notes" rows="4" maxlength="5000"
+                  class="form-control form-control-custom"
+                  placeholder="Observations, plan, follow-up interval...">{{ result.doctor_notes or '' }}</textarea>
+        <button type="submit" class="btn btn-outline-custom mt-2 w-100">
+          <i class="bi bi-save"></i> Save Notes
+        </button>
+      </form>
+    </div>
+
+    <div class="glass-card p-4 mt-3">
+      <h6 class="fw-bold">Suggested Next Steps</h6>
+      {% if result.result == "High Risk" %}
+      <ul class="text-muted small mb-0">
+        <li>Refer to hepatology/gastroenterology for confirmatory assessment.</li>
+        <li>Consider abdominal ultrasound with Doppler and transient elastography (FibroScan).</li>
+        <li>Review the medication list for hepatotoxic agents.</li>
+        <li>Monitor bilirubin, albumin, platelet count and prothrombin time trends.</li>
+        <li>Screen for varices and hepatocellular carcinoma per local guidelines.</li>
+      </ul>
+      {% else %}
+      <ul class="text-muted small mb-0">
+        <li>Continue routine liver panel monitoring at the usual interval.</li>
+        <li>Reassess promptly if jaundice, ascites, oedema or encephalopathy develop.</li>
+        <li>Address modifiable risk factors: alcohol intake, metabolic syndrome, weight.</li>
+        <li>Ensure hepatitis A/B vaccination status is current.</li>
+      </ul>
+      {% endif %}
+    </div>
+
+    {% if recommendations %}
+    <div class="glass-card glow-hover p-4 mt-3">
+      <div class="d-flex align-items-center gap-2 mb-2">
+        {% if recommendations.urgency == 'immediate' %}
+        <span class="badge bg-danger"><i class="bi bi-exclamation-triangle-fill"></i> Urgent</span>
+        {% elif recommendations.urgency == 'soon' %}
+        <span class="badge bg-warning text-dark"><i class="bi bi-clock-fill"></i> Consult Soon</span>
+        {% else %}
+        <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Routine</span>
+        {% endif %}
+        <h6 class="fw-bold mb-0">Recommended Actions</h6>
+      </div>
+      <p class="text-muted small mb-3">{{ recommendations.message }}</p>
+      <ol class="small mb-0">
+        {% for action in recommendations.actions %}
+        <li class="mb-1">{{ action }}</li>
+        {% endfor %}
+      </ol>
+    </div>
+
+    <div class="glass-card glow-hover p-4 mt-3" id="specialists-section">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+        <h6 class="fw-bold mb-0"><i class="bi bi-hospital text-primary"></i> Recommended Specialists & Hospitals</h6>
+        <div class="d-flex align-items-center gap-2">
+          <span id="loc-status" class="badge bg-secondary small" style="font-size:0.68rem">
+            <i class="bi bi-geo-alt"></i> Detecting location...
+          </span>
+          <button type="button" class="btn btn-sm btn-outline-custom" id="btn-use-gps"
+                  title="Use precise GPS location for sorting">
+            <i class="bi bi-crosshair"></i> Use GPS
+          </button>
+        </div>
+      </div>
+      <p class="text-muted small mb-3">
+        Top-rated hepatologists, liver transplant surgeons, and leading hospitals across India.
+        Sorted by proximity to your location.
+      </p>
+      <div id="specialists-list">
+      {% for doc in recommendations.specialists %}
+      <div class="doctor-card p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div class="flex-grow-1">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <span class="fw-bold">{{ doc.name }}</span>
+              <span class="badge bg-warning text-dark" style="font-size:0.7rem">
+                <i class="bi bi-star-fill"></i> {{ doc.rating }}
+              </span>
+              {% if doc.experience %}
+              <span class="badge bg-light text-muted" style="font-size:0.68rem">{{ doc.experience }}</span>
+              {% endif %}
+            </div>
+            <div class="text-primary small fw-semibold">{{ doc.specialisation }}</div>
+            <div class="small mt-2">
+              <i class="bi bi-building text-muted"></i> {{ doc.hospital }}
+            </div>
+            <div class="small">
+              <i class="bi bi-geo-alt text-muted"></i> {{ doc.city }}
+              {% if doc.address %}<span class="text-muted"> &mdash; {{ doc.address }}</span>{% endif %}
+            </div>
+            <div class="d-flex flex-wrap gap-3 mt-2">
+              <div class="small">
+                <i class="bi bi-telephone-fill text-success"></i>
+                <a href="tel:{{ doc.phone }}" class="text-decoration-none fw-semibold">{{ doc.phone }}</a>
+              </div>
+              {% if doc.email %}
+              <div class="small">
+                <i class="bi bi-envelope-fill text-primary"></i>
+                <a href="mailto:{{ doc.email }}" class="text-decoration-none">{{ doc.email }}</a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="text-end d-flex flex-column gap-1" style="min-width:100px">
+            <a href="{{ doc.website }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-custom">
+              <i class="bi bi-globe2"></i> Website
+            </a>
+            {% if doc.maps %}
+            <a href="{{ doc.maps }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-custom">
+              <i class="bi bi-map"></i> Directions
+            </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if recommendations %}
+    <script>
+    (function () {
+      var API_URL = "{{ url_for('api_recommendations', prediction_id=result.id) }}";
+      var locStatus = document.getElementById("loc-status");
+      var btnGps = document.getElementById("btn-use-gps");
+      var listEl = document.getElementById("specialists-list");
+      if (!locStatus || !listEl) return;
+
+      function escapeHtml(t) { var d = document.createElement("div"); d.textContent = t; return d.innerHTML; }
+
+      function renderSpecialists(specialists, label) {
+        if (label) {
+          locStatus.className = "badge bg-success small";
+          locStatus.style.fontSize = "0.68rem";
+          locStatus.innerHTML = '<i class="bi bi-geo-alt-fill"></i> ' + escapeHtml(label);
+        }
+        var html = "";
+        specialists.forEach(function (doc) {
+          var distBadge = doc.distance_km !== undefined
+            ? '<span class="badge bg-info text-dark ms-2" style="font-size:0.68rem"><i class="bi bi-signpost-2"></i> ~' + doc.distance_km + ' km</span>'
+            : "";
+          html += '<div class="doctor-card p-3 mb-3"><div class="d-flex justify-content-between align-items-start flex-wrap gap-2"><div class="flex-grow-1">'
+            + '<div class="d-flex align-items-center gap-2 flex-wrap mb-1"><span class="fw-bold">' + escapeHtml(doc.name) + '</span>'
+            + '<span class="badge bg-warning text-dark" style="font-size:0.7rem"><i class="bi bi-star-fill"></i> ' + doc.rating + '</span>'
+            + (doc.experience ? '<span class="badge bg-light text-muted" style="font-size:0.68rem">' + escapeHtml(doc.experience) + '</span>' : '')
+            + distBadge + '</div>'
+            + '<div class="text-primary small fw-semibold">' + escapeHtml(doc.specialisation) + '</div>'
+            + '<div class="small mt-2"><i class="bi bi-building text-muted"></i> ' + escapeHtml(doc.hospital) + '</div>'
+            + '<div class="small"><i class="bi bi-geo-alt text-muted"></i> ' + escapeHtml(doc.city)
+            + (doc.address ? ' <span class="text-muted">&mdash; ' + escapeHtml(doc.address) + '</span>' : '') + '</div>'
+            + '<div class="d-flex flex-wrap gap-3 mt-2"><div class="small"><i class="bi bi-telephone-fill text-success"></i> '
+            + '<a href="tel:' + escapeHtml(doc.phone) + '" class="text-decoration-none fw-semibold">' + escapeHtml(doc.phone) + '</a></div>'
+            + (doc.email ? '<div class="small"><i class="bi bi-envelope-fill text-primary"></i> <a href="mailto:' + escapeHtml(doc.email) + '" class="text-decoration-none">' + escapeHtml(doc.email) + '</a></div>' : '')
+            + '</div></div>'
+            + '<div class="text-end d-flex flex-column gap-1" style="min-width:100px">'
+            + '<a href="' + escapeHtml(doc.website) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-custom"><i class="bi bi-globe2"></i> Website</a>'
+            + (doc.maps ? '<a href="' + escapeHtml(doc.maps) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-custom"><i class="bi bi-map"></i> Directions</a>' : '')
+            + '</div></div></div>';
+        });
+        listEl.innerHTML = html;
+      }
+
+      function fetchSorted(lat, lng, label) {
+        fetch(API_URL + "?lat=" + lat + "&lng=" + lng, { credentials: "same-origin",
+          headers: { "X-CSRFToken": (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute("content") || "" }
+        }).then(function (r) { return r.json(); })
+          .then(function (data) { renderSpecialists(data.specialists, label); })
+          .catch(function () { locStatus.innerHTML = '<i class="bi bi-geo-alt"></i> Sorted by rating'; });
+      }
+
+      fetch("https://ipapi.co/json/", { mode: "cors" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.latitude && data.longitude) {
+            fetchSorted(data.latitude, data.longitude, (data.city || "") + (data.region ? ", " + data.region : "") || "IP location");
+          } else { locStatus.innerHTML = '<i class="bi bi-geo-alt"></i> Sorted by rating'; }
+        }).catch(function () { locStatus.innerHTML = '<i class="bi bi-geo-alt"></i> Sorted by rating'; });
+
+      if (btnGps) btnGps.addEventListener("click", function () {
+        if (!navigator.geolocation) { locStatus.innerHTML = '<i class="bi bi-geo-alt"></i> GPS not available'; return; }
+        locStatus.className = "badge bg-info text-dark small"; locStatus.style.fontSize = "0.68rem";
+        locStatus.innerHTML = '<i class="bi bi-hourglass-split"></i> Getting GPS...'; btnGps.disabled = true;
+        navigator.geolocation.getCurrentPosition(
+          function (pos) { fetchSorted(pos.coords.latitude, pos.coords.longitude, "GPS location"); btnGps.innerHTML = '<i class="bi bi-check-lg"></i> GPS active'; },
+          function () { locStatus.innerHTML = '<i class="bi bi-geo-alt"></i> GPS denied'; btnGps.disabled = false; },
+          { enableHighAccuracy: true, timeout: 10000 });
+      });
+    })();
+    </script>
+    {% endif %}
+
+    <div class="disclaimer-box mt-3">
+      <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+      This is an AI-generated estimate for decision support, not a medical diagnosis. Interpret
+      alongside full clinical history, imaging and confirmatory testing.
+    </div>
+  </div>
+</div>
+
+{% else %}
+{# ---- Input view (upload or manual entry) ---- #}
+
+{# Primary: Image upload area #}
+<div class="glass-card p-4 p-md-5 mb-4" id="upload-card">
+  <div class="text-center mb-4">
+    <div class="mb-3" style="font-size: 3rem; color: var(--primary);">
+      <i class="bi bi-cloud-arrow-up-fill"></i>
+    </div>
+    <h4 class="fw-bold">Upload Lab Report</h4>
+    <p class="text-muted mb-0">
+      Drop a photo or scan of a liver function test report. Values will be extracted
+      automatically and the prediction will run instantly.
+    </p>
+  </div>
+
+  <div id="drop-zone" class="dropzone" role="button" tabindex="0"
+       aria-label="Upload a lab report for automatic extraction"
+       style="min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+    <i class="bi bi-image" style="font-size: 2.5rem; color: var(--primary); opacity: 0.6;"></i>
+    <p class="mb-1 fw-semibold mt-3">Click to upload or drag &amp; drop</p>
+    <p class="text-muted small mb-0">JPG, PNG, or PDF &middot; up to {{ config.MAX_REPORT_SIZE_MB }}MB</p>
+    <input type="file" id="report-file-input" accept=".jpg,.jpeg,.png,.pdf,.webp,.bmp,.tiff" hidden>
+  </div>
+
+  {# OCR processing status #}
+  <div id="ocr-status" class="mt-4 text-center" style="display:none;">
+    <div class="d-flex align-items-center justify-content-center gap-2">
+      <div class="spinner-border text-primary" role="status"></div>
+      <span id="ocr-status-text" class="fw-semibold">Reading report...</span>
+    </div>
+    <p class="text-muted small mt-2 mb-0">Extracting lab values from the image...</p>
+  </div>
+
+  {# OCR result summary #}
+  <div id="ocr-result-summary" class="mt-3" style="display:none;" aria-live="polite"></div>
+
+  {# Image preview #}
+  <div id="image-preview" class="mt-3 text-center" style="display:none;">
+    <img id="preview-img" src="" alt="Uploaded report preview"
+         style="max-width: 100%; max-height: 300px; border-radius: 12px; border: 2px solid var(--border-color);">
+  </div>
+</div>
+
+{# Extracted values + remaining fields form (shown after OCR extraction) #}
+<div id="ocr-form-card" class="glass-card p-4 mb-4" style="display:none;">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <h5 class="fw-bold mb-0"><i class="bi bi-check2-circle text-success"></i> Extracted Values</h5>
+    <span class="badge bg-success-subtle text-success-emphasis" id="fields-found-badge">0 fields found</span>
+  </div>
+  <p class="text-muted small mb-3" id="ocr-instructions">
+    Review the extracted values below. Fill in any remaining fields, then submit.
+  </p>
+
+  <form method="POST" class="needs-validation" id="prediction-form"
+        data-loading-message="Analyzing patient data..." novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="source" id="source-field" value="ocr">
+
+    <div class="section-title"><i class="bi bi-person-vcard"></i> Patient Identification</div>
+    <div class="row g-3 mb-4">
+      <div class="col-md-6">
+        <label class="form-label-custom" for="f-patient_name">Patient Name <span class="text-muted">(optional)</span></label>
+        <input type="text" id="f-patient_name" name="patient_name" maxlength="120"
+               class="form-control form-control-custom" placeholder="e.g. John Doe">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label-custom" for="f-patient_id">Patient ID / MRN <span class="text-muted">(optional)</span></label>
+        <input type="text" id="f-patient_id" name="patient_id" maxlength="60"
+               class="form-control form-control-custom" placeholder="e.g. MRN-00123">
+      </div>
+    </div>
+
+    <div class="section-title"><i class="bi bi-person"></i> Demographics</div>
+    <div class="row g-3 mb-4">
+      {{ num_field("age", "Age", "years", "0.1") }}
+      {{ choice_field("gender", "Gender", [("M", "Male"), ("F", "Female")]) }}
+    </div>
+
+    <div class="section-title"><i class="bi bi-droplet-half"></i> Laboratory Panel</div>
+    <div class="row g-3 mb-4">
+      {{ num_field("bilirubin", "Bilirubin", "mg/dL") }}
+      {{ num_field("cholesterol", "Cholesterol", "mg/dL", "0.1") }}
+      {{ num_field("albumin", "Albumin", "g/dL") }}
+      {{ num_field("copper", "Urine Copper", "µg/day", "0.1") }}
+      {{ num_field("alk_phos", "Alkaline Phosphatase", "U/L", "0.1") }}
+      {{ num_field("sgot", "SGOT (AST)", "U/mL", "0.1") }}
+      {{ num_field("triglycerides", "Triglycerides", "mg/dL", "0.1") }}
+      {{ num_field("platelets", "Platelets", "10⁹/L", "0.1") }}
+      {{ num_field("prothrombin", "Prothrombin Time", "seconds") }}
+    </div>
+
+    <div class="section-title"><i class="bi bi-clipboard2-pulse"></i> Examination &amp; Staging</div>
+    <p class="text-muted small mb-3">
+      <i class="bi bi-info-circle"></i> These fields are not available from lab reports.
+      Select values based on clinical examination or leave defaults.
+    </p>
+    <div class="row g-3">
+      {{ choice_field("ascites", "Ascites", [("Y", "Present"), ("N", "Absent")]) }}
+      {{ choice_field("hepatomegaly", "Hepatomegaly", [("Y", "Present"), ("N", "Absent")]) }}
+      {{ choice_field("spiders", "Spider Angiomas", [("Y", "Present"), ("N", "Absent")]) }}
+      {{ choice_field("edema", "Edema", [("N", "None"), ("S", "Slight"), ("Y", "Present")]) }}
+      {{ choice_field("stage", "Histologic Stage",
+                      [("1", "Stage 1"), ("2", "Stage 2"), ("3", "Stage 3"), ("4", "Stage 4")]) }}
+    </div>
+
+    <button type="submit" class="btn btn-primary-custom mt-4 w-100" id="ocr-submit-btn">
+      <i class="bi bi-cpu"></i> Analyze Patient Risk
+    </button>
+  </form>
+</div>
+
+{# Manual entry button + collapsible form #}
+<div class="text-center mb-4" id="manual-entry-toggle">
+  <div class="d-inline-flex align-items-center gap-2 text-muted mb-2">
+    <hr style="width: 60px; border-color: var(--border-color);"><span class="small">OR</span><hr style="width: 60px; border-color: var(--border-color);">
+  </div>
+  <br>
+  <button type="button" class="btn btn-outline-custom btn-lg" id="manual-entry-btn">
+    <i class="bi bi-pencil-square"></i> Enter Values Manually
+  </button>
+</div>
+
+{# Manual form (hidden by default) #}
+<div id="manual-form-card" class="glass-card p-4" style="display:none;">
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <h5 class="fw-bold mb-0"><i class="bi bi-input-cursor-text text-primary"></i> Manual Data Entry</h5>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="close-manual-btn">
+      <i class="bi bi-x-lg"></i> Close
+    </button>
+  </div>
+
+  {% if field_errors %}
+  <div class="alert alert-danger">
+    <strong><i class="bi bi-exclamation-triangle-fill"></i> {{ field_errors | length }} field(s) need attention.</strong>
+    Corrections are shown beneath each input.
+  </div>
+  {% endif %}
+
+  <form method="POST" class="needs-validation" id="manual-prediction-form"
+        data-loading-message="Analyzing patient data..." novalidate>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="source" value="manual">
+
+    <div class="section-title"><i class="bi bi-person-vcard"></i> Patient Identification</div>
+    <div class="row g-3 mb-4">
+      <div class="col-md-6">
+        <label class="form-label-custom" for="mf-patient_name">Patient Name <span class="text-muted">(optional)</span></label>
+        <input type="text" id="mf-patient_name" name="patient_name" maxlength="120"
+               class="form-control form-control-custom" placeholder="e.g. John Doe"
+               value="{{ form_data.get('patient_name', '') if form_data else '' }}">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label-custom" for="mf-patient_id">Patient ID / MRN <span class="text-muted">(optional)</span></label>
+        <input type="text" id="mf-patient_id" name="patient_id" maxlength="60"
+               class="form-control form-control-custom" placeholder="e.g. MRN-00123"
+               value="{{ form_data.get('patient_id', '') if form_data else '' }}">
+      </div>
+    </div>
+
+    <div class="section-title"><i class="bi bi-person"></i> Demographics</div>
+    <div class="row g-3 mb-4">
+      {% set err_age = field_errors.get('age') if field_errors else None %}
+      <div class="col-md-3">
+        <label class="form-label-custom" for="mf-age">Age <span class="text-muted">(years)</span></label>
+        <input type="number" step="0.1" id="mf-age" name="age"
+               class="form-control form-control-custom {{ 'field-invalid' if err_age }}"
+               value="{{ form_data.get('age', '') if form_data else '' }}" required>
+        {% if err_age %}<span class="field-error">{{ err_age }}</span>{% endif %}
+      </div>
+      {% set err_gender = field_errors.get('gender') if field_errors else None %}
+      <div class="col-md-3">
+        <label class="form-label-custom" for="mf-gender">Gender</label>
+        <select id="mf-gender" name="gender"
+                class="form-select form-select-custom {{ 'field-invalid' if err_gender }}" required>
+          <option value="" disabled {{ 'selected' if not (form_data and form_data.get('gender')) }}>Select</option>
+          <option value="M" {{ 'selected' if form_data and form_data.get('gender') == 'M' }}>Male</option>
+          <option value="F" {{ 'selected' if form_data and form_data.get('gender') == 'F' }}>Female</option>
+        </select>
+        {% if err_gender %}<span class="field-error">{{ err_gender }}</span>{% endif %}
+      </div>
+    </div>
+
+    <div class="section-title"><i class="bi bi-droplet-half"></i> Laboratory Panel</div>
+    <div class="row g-3 mb-4">
+      {% for name, label, unit, step_val in [
+        ('bilirubin', 'Bilirubin', 'mg/dL', '0.01'),
+        ('cholesterol', 'Cholesterol', 'mg/dL', '0.1'),
+        ('albumin', 'Albumin', 'g/dL', '0.01'),
+        ('copper', 'Urine Copper', 'µg/day', '0.1'),
+        ('alk_phos', 'Alkaline Phosphatase', 'U/L', '0.1'),
+        ('sgot', 'SGOT (AST)', 'U/mL', '0.1'),
+        ('triglycerides', 'Triglycerides', 'mg/dL', '0.1'),
+        ('platelets', 'Platelets', '10⁹/L', '0.1'),
+        ('prothrombin', 'Prothrombin Time', 'seconds', '0.01'),
+      ] %}
+      {% set err = field_errors.get(name) if field_errors else None %}
+      <div class="col-md-3">
+        <label class="form-label-custom" for="mf-{{ name }}">
+          {{ label }} <span class="text-muted">({{ unit }})</span>
+        </label>
+        <input type="number" step="{{ step_val }}" id="mf-{{ name }}" name="{{ name }}"
+               class="form-control form-control-custom {{ 'field-invalid' if err }}"
+               value="{{ form_data.get(name, '') if form_data else '' }}" required>
+        {% if err %}<span class="field-error">{{ err }}</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="section-title"><i class="bi bi-clipboard2-pulse"></i> Examination &amp; Staging</div>
+    <div class="row g-3">
+      {% for name, label, opts in [
+        ('ascites', 'Ascites', [('Y', 'Present'), ('N', 'Absent')]),
+        ('hepatomegaly', 'Hepatomegaly', [('Y', 'Present'), ('N', 'Absent')]),
+        ('spiders', 'Spider Angiomas', [('Y', 'Present'), ('N', 'Absent')]),
+        ('edema', 'Edema', [('N', 'None'), ('S', 'Slight'), ('Y', 'Present')]),
+        ('stage', 'Histologic Stage', [('1', 'Stage 1'), ('2', 'Stage 2'), ('3', 'Stage 3'), ('4', 'Stage 4')]),
+      ] %}
+      {% set err = field_errors.get(name) if field_errors else None %}
+      {% set chosen = form_data.get(name, '') if form_data else '' %}
+      <div class="col-md-3">
+        <label class="form-label-custom" for="mf-{{ name }}">{{ label }}</label>
+        <select id="mf-{{ name }}" name="{{ name }}"
+                class="form-select form-select-custom {{ 'field-invalid' if err }}" required>
+          <option value="" {{ 'selected' if not chosen }} disabled>Select</option>
+          {% for value, text in opts %}
+          <option value="{{ value }}" {{ 'selected' if chosen == value }}>{{ text }}</option>
+          {% endfor %}
+        </select>
+        {% if err %}<span class="field-error">{{ err }}</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <button type="submit" class="btn btn-primary-custom mt-4 w-100">
+      <i class="bi bi-cpu"></i> Analyze Patient Risk
+    </button>
+  </form>
+</div>
+
+{% endif %}{# end if result #}
+{% endif %}{# end if model_error #}
+
+{% endblock %}
+
+{% block extra_scripts %}
+{% if not model_error %}
+<script>
+(function () {
+  const dropZone = document.getElementById("drop-zone");
+  const fileInput = document.getElementById("report-file-input");
+  const statusBox = document.getElementById("ocr-status");
+  const statusText = document.getElementById("ocr-status-text");
+  const summaryBox = document.getElementById("ocr-result-summary");
+  const ocrFormCard = document.getElementById("ocr-form-card");
+  const uploadCard = document.getElementById("upload-card");
+  const manualEntryToggle = document.getElementById("manual-entry-toggle");
+  const manualFormCard = document.getElementById("manual-form-card");
+  const manualEntryBtn = document.getElementById("manual-entry-btn");
+  const closeManualBtn = document.getElementById("close-manual-btn");
+  const imagePreview = document.getElementById("image-preview");
+  const previewImg = document.getElementById("preview-img");
+
+  // Bail if we're on the results view (no upload area)
+  if (!dropZone) return;
+
+  const FIELD_LABELS = {{ field_meta | tojson }};
+
+  // ---- Manual entry toggle ----
+  if (manualEntryBtn) {
+    manualEntryBtn.addEventListener("click", function () {
+      manualFormCard.style.display = "block";
+      manualEntryToggle.style.display = "none";
+      uploadCard.style.display = "none";
+      if (ocrFormCard) ocrFormCard.style.display = "none";
+      manualFormCard.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+  if (closeManualBtn) {
+    closeManualBtn.addEventListener("click", function () {
+      manualFormCard.style.display = "none";
+      manualEntryToggle.style.display = "block";
+      uploadCard.style.display = "block";
+    });
+  }
+
+  // ---- Show manual form if server returned validation errors ----
+  {% if field_errors %}
+  if (manualFormCard) {
+    manualFormCard.style.display = "block";
+    if (manualEntryToggle) manualEntryToggle.style.display = "none";
+    if (uploadCard) uploadCard.style.display = "none";
+  }
+  {% endif %}
+
+  // ---- File upload via click/drag ----
+  function openPicker() { fileInput.click(); }
+  dropZone.addEventListener("click", openPicker);
+  dropZone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPicker(); }
+  });
+
+  ["dragenter", "dragover"].forEach(evt =>
+    dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.add("dragover"); })
+  );
+  ["dragleave", "drop"].forEach(evt =>
+    dropZone.addEventListener(evt, (e) => { e.preventDefault(); dropZone.classList.remove("dragover"); })
+  );
+  dropZone.addEventListener("drop", (e) => {
+    const file = e.dataTransfer.files[0];
+    if (file) handleUpload(file);
+  });
+  fileInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (file) handleUpload(file);
+  });
+
+  function setSummary(cls, iconClass, html) {
+    summaryBox.style.display = "block";
+    summaryBox.innerHTML = "";
+    const box = document.createElement("div");
+    box.className = "alert " + cls + " mb-0";
+    box.innerHTML = '<i class="bi ' + iconClass + '"></i> ' + html;
+    summaryBox.append(box);
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function showImagePreview(file) {
+    if (file.type.startsWith("image/")) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImg.src = e.target.result;
+        imagePreview.style.display = "block";
+      };
+      reader.readAsDataURL(file);
+    }
+  }
+
+  // Default values for physical exam fields OCR can't extract
+  const EXAM_DEFAULTS = {
+    ascites: "N",
+    hepatomegaly: "N",
+    spiders: "N",
+    edema: "N"
+  };
+
+  // Median values from training data — used as defaults when OCR can't find
+  // a particular lab value (e.g. cholesterol, copper, triglycerides are often
+  // not on a standard LFT report). This lets the prediction run even with a
+  // partial report.
+  const LAB_DEFAULTS = {
+    age: "50",
+    cholesterol: "342",
+    copper: "155",
+    triglycerides: "146"
+  };
+
+  // Estimate histologic stage from lab values when OCR can't extract it.
+  function estimateStage(fields) {
+    var severity = 0;
+    var bil = parseFloat(fields.bilirubin);
+    var alb = parseFloat(fields.albumin);
+    var plt = parseFloat(fields.platelets);
+    var pt  = parseFloat(fields.prothrombin);
+    if (!isNaN(bil) && bil > 2.0)   severity++;
+    if (!isNaN(bil) && bil > 8.0)   severity++;
+    if (!isNaN(alb) && alb < 3.5)   severity++;
+    if (!isNaN(alb) && alb < 2.8)   severity++;
+    if (!isNaN(plt) && plt < 150)    severity++;
+    if (!isNaN(plt) && plt < 100)    severity++;
+    if (!isNaN(pt)  && pt  > 13.5)   severity++;
+    if (severity >= 5) return "4";
+    if (severity >= 3) return "3";
+    if (severity >= 1) return "2";
+    return "1";
+  }
+
+  function handleUpload(file) {
+    const maxBytes = {{ config.MAX_CONTENT_LENGTH }};
+    if (file.size > maxBytes) {
+      setSummary("alert-danger", "bi-exclamation-triangle",
+        "That file is " + (file.size / 1048576).toFixed(1) + "MB, over the " +
+        {{ config.MAX_REPORT_SIZE_MB }} + "MB limit.");
+      return;
+    }
+
+    showImagePreview(file);
+
+    const formData = new FormData();
+    formData.append("report", file);
+
+    statusBox.style.display = "block";
+    summaryBox.style.display = "none";
+    statusText.textContent = "Reading " + file.name + "...";
+
+    postForm("{{ url_for('extract_report') }}", formData)
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        statusBox.style.display = "none";
+        if (!ok || data.error) {
+          setSummary("alert-danger", "bi-exclamation-triangle",
+                     escapeHtml(data.error || "Extraction failed."));
+          showToast(data.error || "Could not read the report.", "danger");
+          // Show the OCR form anyway so user can fill in manually
+          showOCRForm(0);
+          return;
+        }
+
+        const found = data.extracted_fields || {};
+        const form = document.getElementById("prediction-form");
+        const filledLabels = [];
+        const sourceField = document.getElementById("source-field");
+
+        // Fill extracted fields
+        Object.keys(found).forEach((key) => {
+          const el = form.querySelector('[name="' + key + '"]');
+          if (el) {
+            el.value = found[key];
+            el.classList.add("border-success");
+            el.classList.remove("field-invalid");
+            filledLabels.push((FIELD_LABELS[key] || {}).label || key);
+          }
+        });
+
+        // Set defaults for physical exam fields that OCR can't read
+        Object.keys(EXAM_DEFAULTS).forEach((key) => {
+          if (!found[key]) {
+            const el = form.querySelector('[name="' + key + '"]');
+            if (el && !el.value) {
+              el.value = EXAM_DEFAULTS[key];
+            }
+          }
+        });
+
+        // Auto-estimate Stage from extracted lab values when OCR didn't find it
+        if (!found.stage) {
+          const stageEl = form.querySelector('[name="stage"]');
+          if (stageEl && !stageEl.value) {
+            stageEl.value = estimateStage(found);
+          }
+        }
+
+        // Fill median defaults for numeric lab fields OCR didn't find
+        // (e.g. cholesterol, copper, triglycerides are often not on a LFT)
+        Object.keys(LAB_DEFAULTS).forEach((key) => {
+          if (!found[key]) {
+            const el = form.querySelector('[name="' + key + '"]');
+            if (el && !el.value) {
+              el.value = LAB_DEFAULTS[key];
+            }
+          }
+        });
+
+        // Default gender to F (more common in the training dataset) if OCR missed it
+        if (!found.gender) {
+          const gEl = form.querySelector('[name="gender"]');
+          if (gEl && !gEl.value) gEl.value = "F";
+        }
+
+        sourceField.value = "ocr";
+
+        if (filledLabels.length > 0) {
+          setSummary("alert-success", "bi-check-circle-fill",
+            '<strong>' + filledLabels.length + ' value(s) extracted successfully!</strong>' +
+            '<div class="mt-1 small">Auto-filled: ' + escapeHtml(filledLabels.join(", ")) + '</div>' +
+            '<div class="mt-1 small text-muted">Missing lab values filled with population ' +
+            'medians. Examination fields set to defaults. Submitting automatically...</div>');
+          showToast("Auto-filled " + filledLabels.length + " field(s) — analyzing...", "success");
+        } else {
+          setSummary("alert-warning", "bi-info-circle",
+            '<strong>No values could be read from this image.</strong> ' +
+            'Please fill in the values manually below.');
+          showToast("No values could be read — please enter them manually.", "warning");
+        }
+
+        // Auto-submit if OCR extracted at least 3 lab values — defaults fill the rest
+        const allFilled = checkAllFieldsFilled(form);
+        if (allFilled && filledLabels.length >= 3) {
+          showToast("Analyzing patient risk...", "info");
+          setTimeout(function () { form.submit(); }, 500);
+        } else if (filledLabels.length > 0) {
+          showOCRForm(filledLabels.length);
+        } else {
+          showOCRForm(0);
+          const firstEmpty = form.querySelector("select:invalid, input:invalid, input[required]:placeholder-shown");
+          if (firstEmpty) firstEmpty.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+      })
+      .catch(() => {
+        statusBox.style.display = "none";
+        setSummary("alert-danger", "bi-exclamation-triangle",
+          "Something went wrong reading the file. Try again, or enter values manually.");
+        showToast("Upload failed. Please try again.", "danger");
+        showOCRForm(0);
+      });
+  }
+
+  function showOCRForm(fieldsFound) {
+    if (ocrFormCard) {
+      ocrFormCard.style.display = "block";
+      const badge = document.getElementById("fields-found-badge");
+      if (badge) badge.textContent = fieldsFound + " field(s) extracted";
+      if (manualEntryToggle) manualEntryToggle.style.display = "none";
+      ocrFormCard.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  function checkAllFieldsFilled(form) {
+    const requiredInputs = form.querySelectorAll("input[required], select[required]");
+    for (const el of requiredInputs) {
+      if (!el.value || el.value === "") return false;
+    }
+    return true;
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,126 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "admin_messages" %}
+{% block title %}Contact Messages - Admin | Hepato AI{% endblock %}
+{% block dashboard_content %}
+
+{% set unread = messages | rejectattr('is_read') | list %}
+
+<div class="page-header">
+  <div>
+    <h1>Contact Messages</h1>
+    <p>
+      {{ messages | length }} message(s) received
+      {% if unread %}&middot; <strong class="text-danger">{{ unread | length }} unread</strong>{% endif %}
+    </p>
+  </div>
+  <div class="d-flex gap-2">
+    <button type="button" class="btn btn-outline-custom" id="toggle-unread">
+      <i class="bi bi-funnel"></i> Show unread only
+    </button>
+    <a href="{{ url_for('admin') }}" class="btn btn-outline-custom">
+      <i class="bi bi-arrow-left"></i> Admin Panel
+    </a>
+  </div>
+</div>
+
+{% if messages %}
+<div class="accordion accordion-flush" id="messageList">
+  {% for m in messages %}
+  <div class="glass-card mb-3 message-item" data-read="{{ 'true' if m.is_read else 'false' }}">
+    <div class="accordion-item bg-transparent border-0">
+      <div class="d-flex align-items-start gap-3 p-3 flex-wrap">
+        <div class="flex-fill" style="min-width: 220px;">
+          <button class="btn btn-link p-0 text-start text-decoration-none w-100 collapsed"
+                  type="button" data-bs-toggle="collapse" data-bs-target="#msg{{ m.id }}"
+                  aria-expanded="false" aria-controls="msg{{ m.id }}">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              {% if not m.is_read %}
+              <span class="badge bg-danger">NEW</span>
+              {% endif %}
+              <span class="fw-bold">{{ m.subject or '(no subject)' }}</span>
+            </div>
+            <div class="text-muted small mt-1">
+              {{ m.name }} &lt;{{ m.email }}&gt; &middot; {{ m.created_at | humandate }}
+            </div>
+          </button>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <a href="mailto:{{ m.email }}?subject=Re: {{ m.subject or 'Your Hepato AI enquiry' }}"
+             class="btn btn-sm btn-outline-custom" title="Reply by email">
+            <i class="bi bi-reply"></i> Reply
+          </a>
+          <form method="POST" action="{{ url_for('admin_mark_message_read', message_id=m.id) }}"
+                data-show-loading="false" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-outline-custom"
+                    title="{{ 'Mark as unread' if m.is_read else 'Mark as read' }}">
+              <i class="bi {{ 'bi-envelope' if m.is_read else 'bi-envelope-open' }}"></i>
+              {{ 'Unread' if m.is_read else 'Read' }}
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('admin_delete_message', message_id=m.id) }}"
+                data-show-loading="false" data-confirm="Delete this message permanently?"
+                class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete message">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div id="msg{{ m.id }}" class="accordion-collapse collapse" data-bs-parent="#messageList">
+        <div class="px-3 pb-3">
+          <div class="p-3 rounded" style="background: var(--surface-solid); border: 1px solid var(--border);">
+            <p class="mb-0" style="white-space: pre-wrap;">{{ m.message }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="empty-state" id="no-unread" style="display:none;">
+  <i class="bi bi-check2-all"></i>
+  <h5>Inbox zero</h5>
+  <p class="mb-0">Every message has been read.</p>
+</div>
+
+{% else %}
+<div class="glass-card p-4">
+  <div class="empty-state">
+    <i class="bi bi-inbox"></i>
+    <h5>No messages yet</h5>
+    <p class="mb-0">Submissions from the public contact form will appear here.</p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  const toggle = document.getElementById("toggle-unread");
+  if (!toggle) return;
+  const items = Array.from(document.querySelectorAll(".message-item"));
+  const emptyNotice = document.getElementById("no-unread");
+  let unreadOnly = false;
+
+  toggle.addEventListener("click", () => {
+    unreadOnly = !unreadOnly;
+    let visible = 0;
+    items.forEach((item) => {
+      const hide = unreadOnly && item.dataset.read === "true";
+      item.style.display = hide ? "none" : "";
+      if (!hide) visible++;
+    });
+    toggle.innerHTML = unreadOnly
+      ? '<i class="bi bi-funnel-fill"></i> Show all'
+      : '<i class="bi bi-funnel"></i> Show unread only';
+    emptyNotice.style.display = unreadOnly && visible === 0 ? "" : "none";
+  });
+})();
+</script>
+{% endblock %}

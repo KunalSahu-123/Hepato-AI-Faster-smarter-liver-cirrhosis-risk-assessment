@@ -1,0 +1,34 @@
+databases:
+  - name: hepatoai-db
+    plan: free
+    databaseName: hepatoai
+    user: hepatoai_user
+
+services:
+  - type: web
+    name: hepato-ai
+    plan: free
+    runtime: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hepatoai-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENV_NAME
+        value: production
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: ADMIN_EMAIL
+        value: admin@liverai.com
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
+      - key: PYTHON_VERSION
+        value: "3.11.11"

@@ -1,0 +1,253 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "history" %}
+{% block title %}History - Hepato AI{% endblock %}
+{% block dashboard_content %}
+
+<div class="page-header">
+  <div>
+    <h1>Assessment History</h1>
+    <p>{{ pagination.total }} record(s){% if search or risk_filter or stage_filter %} matching your filters{% endif %}.</p>
+  </div>
+  {% if current_user.is_admin %}
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('compare') }}" class="btn btn-outline-custom">
+      <i class="bi bi-columns-gap"></i> Compare
+    </a>
+    <a href="{{ url_for('export_csv') }}" class="btn btn-outline-custom">
+      <i class="bi bi-file-earmark-spreadsheet"></i> Export CSV
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="glass-card p-3 mb-4">
+  <form method="GET" class="row g-2 align-items-end" data-show-loading="false">
+    <div class="col-md-4">
+      <label class="form-label-custom" for="h-search">Search</label>
+      <input type="text" id="h-search" name="search" value="{{ search }}"
+             class="form-control form-control-custom" placeholder="Patient name or ID...">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label-custom" for="h-risk">Result</label>
+      <select id="h-risk" name="risk" class="form-select form-select-custom">
+        <option value="">All</option>
+        <option value="High Risk" {{ 'selected' if risk_filter == 'High Risk' }}>High Risk</option>
+        <option value="Low Risk" {{ 'selected' if risk_filter == 'Low Risk' }}>Low Risk</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label-custom" for="h-stage">Stage</label>
+      <select id="h-stage" name="stage" class="form-select form-select-custom">
+        <option value="">All</option>
+        {% for s in [1, 2, 3, 4] %}
+        <option value="{{ s }}" {{ 'selected' if stage_filter == s }}>Stage {{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label-custom" for="h-sort">Sort by</label>
+      <select id="h-sort" name="sort" class="form-select form-select-custom">
+        <option value="newest"   {{ 'selected' if sort == 'newest' }}>Newest first</option>
+        <option value="oldest"   {{ 'selected' if sort == 'oldest' }}>Oldest first</option>
+        <option value="risk_high" {{ 'selected' if sort == 'risk_high' }}>Highest risk</option>
+        <option value="risk_low"  {{ 'selected' if sort == 'risk_low' }}>Lowest risk</option>
+        <option value="name"      {{ 'selected' if sort == 'name' }}>Patient name</option>
+      </select>
+    </div>
+    <div class="col-md-2 d-flex gap-2">
+      <button class="btn btn-primary-custom flex-fill"><i class="bi bi-funnel"></i> Apply</button>
+      {% if search or risk_filter or stage_filter or sort != 'newest' %}
+      <a href="{{ url_for('history') }}" class="btn btn-outline-custom" title="Clear filters">
+        <i class="bi bi-x-lg"></i>
+      </a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<div class="glass-card p-4">
+  {% if pagination.items %}
+  <form method="POST" action="{{ url_for('bulk_delete_predictions') }}" id="bulk-form"
+        data-confirm="Delete all selected records? This cannot be undone."
+        data-show-loading="false">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <div class="form-check mb-0">
+        <input class="form-check-input" type="checkbox" id="select-all">
+        <label class="form-check-label small" for="select-all">Select all on this page</label>
+      </div>
+      <div class="d-flex gap-2">
+        {% if current_user.is_admin %}
+        <button type="button" class="btn btn-sm btn-outline-custom" id="compare-selected" disabled>
+          <i class="bi bi-columns-gap"></i> Compare selected
+        </button>
+        {% endif %}
+        <button type="submit" class="btn btn-sm btn-outline-danger" id="delete-selected" disabled>
+          <i class="bi bi-trash"></i> Delete selected
+        </button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-custom align-middle">
+        <thead>
+          <tr>
+            <th></th><th>Patient</th><th>Age</th><th>Sex</th><th>Result</th>
+            <th>Confidence</th><th>Band</th><th>Stage</th><th>MELD</th><th>Source</th>
+            <th>Date</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in pagination.items %}
+          <tr>
+            <td>
+              <input class="form-check-input row-check" type="checkbox"
+                     name="prediction_ids" value="{{ r.id }}"
+                     aria-label="Select {{ r.patient_name }}">
+            </td>
+            <td>
+              <div class="fw-semibold">{{ r.patient_name }}</div>
+              {% if r.patient_id %}<div class="text-muted small">{{ r.patient_id }}</div>{% endif %}
+            </td>
+            <td>{{ r.age | round(0) | int if r.age else '-' }}</td>
+            <td>{{ {'M': 'Male', 'F': 'Female'}.get(r.gender, '-') }}</td>
+            <td><span class="badge {{ 'badge-risk-high' if r.result == 'High Risk' else 'badge-risk-low' }}">{{ r.result }}</span></td>
+            <td>{{ r.probability_pct }}%</td>
+            <td>{{ r.risk_level }}</td>
+            <td>{{ r.stage or '-' }}</td>
+            <td>{{ r.meld_score if r.meld_score is not none else '-' }}</td>
+            <td><span class="text-muted small text-capitalize">{{ r.source }}</span></td>
+            <td class="text-muted small">{{ r.created_at | humandate }}</td>
+            <td class="text-nowrap">
+              <a href="{{ url_for('prediction_detail', prediction_id=r.id) }}"
+                 class="btn btn-sm btn-outline-custom" title="View detail"><i class="bi bi-eye"></i></a>
+              <a href="{{ url_for('export_pdf', prediction_id=r.id) }}"
+                 class="btn btn-sm btn-outline-custom" title="Download PDF"><i class="bi bi-file-earmark-pdf"></i></a>
+              <button type="button" class="btn btn-sm btn-outline-custom"
+                      data-bs-toggle="modal" data-bs-target="#notesModal{{ r.id }}"
+                      title="Clinician notes"><i class="bi bi-journal-text"></i></button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+
+  {# Modals live outside the bulk form: a nested <form> would be invalid HTML. #}
+  {% for r in pagination.items %}
+  <div class="modal fade" id="notesModal{{ r.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form method="POST" action="{{ url_for('save_notes', prediction_id=r.id) }}" data-show-loading="false">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="modal-header">
+            <h5 class="modal-title">Clinician Notes &mdash; {{ r.patient_name }}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <label class="visually-hidden" for="notes-{{ r.id }}">Notes for {{ r.patient_name }}</label>
+            <textarea id="notes-{{ r.id }}" name="notes" rows="6" maxlength="5000"
+                      class="form-control form-control-custom">{{ r.doctor_notes or '' }}</textarea>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary-custom">Save Notes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="deleteModal{{ r.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+      <div class="modal-content">
+        <form method="POST" action="{{ url_for('delete_prediction', prediction_id=r.id) }}" data-show-loading="false">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="modal-body">
+            <p class="mb-0">Delete the record for <strong>{{ r.patient_name }}</strong>?</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-custom btn-sm" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if pagination.pages > 1 %}
+  <nav aria-label="History pages">
+    <ul class="pagination justify-content-center mt-3 mb-0">
+      <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
+        <a class="page-link" href="{{ url_for('history', page=pagination.prev_num, search=search, risk=risk_filter, stage=stage_filter, sort=sort) }}">&laquo;</a>
+      </li>
+      {% for p in pagination.iter_pages(left_edge=1, left_current=2, right_current=3, right_edge=1) %}
+        {% if p %}
+        <li class="page-item {{ 'active' if p == pagination.page }}">
+          <a class="page-link" href="{{ url_for('history', page=p, search=search, risk=risk_filter, stage=stage_filter, sort=sort) }}">{{ p }}</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+        {% endif %}
+      {% endfor %}
+      <li class="page-item {{ 'disabled' if not pagination.has_next }}">
+        <a class="page-link" href="{{ url_for('history', page=pagination.next_num, search=search, risk=risk_filter, stage=stage_filter, sort=sort) }}">&raquo;</a>
+      </li>
+    </ul>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div class="empty-state">
+    <i class="bi bi-inbox"></i>
+    <h5>No records found</h5>
+    {% if search or risk_filter or stage_filter %}
+    <p class="mb-3">Nothing matched those filters.</p>
+    <a href="{{ url_for('history') }}" class="btn btn-outline-custom">Clear filters</a>
+    {% else %}
+    <p class="mb-3">Run your first assessment to start building a history.</p>
+    <a href="{{ url_for('prediction') }}" class="btn btn-primary-custom">
+      <i class="bi bi-plus-lg"></i> New Prediction
+    </a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+{% block extra_scripts %}
+<script>
+(function () {
+  const selectAll = document.getElementById("select-all");
+  const deleteBtn = document.getElementById("delete-selected");
+  const compareBtn = document.getElementById("compare-selected");
+  if (!selectAll) return;
+
+  const rows = () => Array.from(document.querySelectorAll(".row-check"));
+
+  function refresh() {
+    const checked = rows().filter(cb => cb.checked);
+    deleteBtn.disabled = checked.length === 0;
+    // The comparison view renders at most four columns legibly.
+    compareBtn.disabled = checked.length < 2 || checked.length > 4;
+    compareBtn.title = checked.length > 4 ? "Select at most 4 records" : "";
+  }
+
+  selectAll.addEventListener("change", () => {
+    rows().forEach(cb => { cb.checked = selectAll.checked; });
+    refresh();
+  });
+  rows().forEach(cb => cb.addEventListener("change", refresh));
+
+  compareBtn.addEventListener("click", () => {
+    const ids = rows().filter(cb => cb.checked).map(cb => cb.value);
+    window.location.href = "{{ url_for('compare') }}?" + ids.map(i => "ids=" + i).join("&");
+  });
+
+  refresh();
+})();
+</script>
+{% endblock %}

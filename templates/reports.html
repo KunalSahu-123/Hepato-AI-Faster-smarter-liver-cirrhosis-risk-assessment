@@ -1,0 +1,258 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "reports" %}
+{% block title %}Reports - Hepato AI{% endblock %}
+
+{% macro chart_card(filename, title, note="", col="col-md-6 col-xl-4") %}
+<div class="{{ col }}">
+  <div class="glass-card p-3">
+    <h6 class="fw-bold mb-1">{{ title }}</h6>
+    {% if note %}<p class="text-muted small mb-2">{{ note }}</p>{% endif %}
+    <div class="chart-frame">
+      <img src="{{ url_for('static', filename='images/charts/' + filename) }}"
+           alt="{{ title }}" loading="lazy">
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% block dashboard_content %}
+
+<div class="page-header">
+  <div>
+    <h1>Reports &amp; Model Performance</h1>
+    <p>
+      How the deployed model was trained, validated and scored.
+      {% if metrics.trained_at %}Last trained {{ metrics.trained_at }}.{% endif %}
+    </p>
+  </div>
+  <a href="{{ url_for('export_csv') }}" class="btn btn-outline-custom">
+    <i class="bi bi-file-earmark-spreadsheet"></i> Export All CSV
+  </a>
+</div>
+
+{% if not metrics %}
+<div class="alert alert-warning">
+  <strong><i class="bi bi-exclamation-triangle-fill"></i> Model metrics unavailable.</strong>
+  Run <code>python train_model.py</code> to train the model and generate these charts.
+</div>
+{% else %}
+
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-primary-grad">
+      <div class="stat-value">{{ metrics.accuracy | pct }}</div><div>Accuracy</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-success-grad">
+      <div class="stat-value">{{ metrics.precision | pct }}</div><div>Precision</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-warning-grad">
+      <div class="stat-value">{{ metrics.recall | pct }}</div><div>Recall</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-danger-grad">
+      <div class="stat-value">{{ metrics.roc_auc | pct }}</div><div>ROC-AUC</div>
+    </div>
+  </div>
+</div>
+
+<div class="glass-card p-4 mb-4">
+  <h5 class="fw-bold mb-1">Training Summary</h5>
+  <p class="text-muted small mb-3">
+    Held-out test-set results. The 80/20 split was stratified on the target, so both splits
+    carry the same class balance.
+  </p>
+  <div class="row g-3">
+    <div class="col-6 col-md-3">
+      <div class="metric-tile">
+        <div class="metric-value">{{ metrics.f1_score | pct }}</div>
+        <div class="metric-name">F1 Score</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="metric-tile">
+        <div class="metric-value">{{ metrics.average_precision | pct }}</div>
+        <div class="metric-name">Avg Precision</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="metric-tile">
+        <div class="metric-value">{{ metrics.brier_score | round(4) if metrics.brier_score is not none else 'N/A' }}</div>
+        <div class="metric-name">Brier Score</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="metric-tile">
+        <div class="metric-value">{{ metrics.cv_mean_accuracy | pct }}</div>
+        <div class="metric-name">CV Accuracy</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mt-4">
+    <div class="col-md-6">
+      <div class="section-title"><i class="bi bi-gear"></i> Deployed Configuration</div>
+      <table class="panel-table">
+        <tbody>
+          <tr><td class="text-muted">Model</td><td class="fw-semibold">{{ metrics.model_name or 'RandomForest' }}</td></tr>
+          <tr><td class="text-muted">Best family by CV F1</td><td class="fw-semibold">{{ metrics.best_family_by_cv or '-' }}</td></tr>
+          <tr>
+            <td class="text-muted">Probability calibration</td>
+            <td class="fw-semibold">
+              {% if metrics.calibration_applied %}
+                Isotonic &mdash; applied
+                <span class="text-muted small d-block">
+                  Brier improved {{ metrics.brier_score_uncalibrated | round(4) }} &rarr; {{ metrics.brier_score | round(4) }}
+                </span>
+              {% else %}
+                Not applied (raw model scored better)
+              {% endif %}
+            </td>
+          </tr>
+          <tr><td class="text-muted">Train / test rows</td><td class="fw-semibold">{{ metrics.train_size }} / {{ metrics.test_size }}</td></tr>
+          <tr><td class="text-muted">scikit-learn</td><td class="fw-semibold">{{ metrics.sklearn_version or 'unknown' }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="col-md-6">
+      <div class="section-title"><i class="bi bi-sliders"></i> Tuned Hyperparameters</div>
+      <table class="panel-table">
+        <tbody>
+          {% for key, value in (metrics.best_params or {}).items() %}
+          <tr><td class="text-muted">{{ key }}</td><td class="fw-semibold">{{ value if value is not none else 'None' }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if metrics.classification_report %}
+  <div class="section-title mt-4"><i class="bi bi-file-text"></i> Classification Report</div>
+  <pre class="small mb-0 p-3 rounded" style="background: var(--surface-solid); border: 1px solid var(--border); overflow-x: auto;">{{ metrics.classification_report }}</pre>
+  {% endif %}
+</div>
+
+{% if model_comparison %}
+<div class="glass-card p-4 mb-4">
+  <h5 class="fw-bold mb-1">Algorithm Comparison</h5>
+  <p class="text-muted small mb-3">
+    Six algorithms benchmarked with 5-fold stratified cross-validation on the training split.
+    The Random Forest is deployed: competitive here, and it exposes the feature importances the
+    explainability views need.
+  </p>
+  <div class="table-responsive">
+    <table class="table table-custom align-middle mb-0">
+      <thead>
+        <tr><th>Algorithm</th><th>CV F1</th><th>Std Dev</th><th>CV ROC-AUC</th><th>CV Accuracy</th></tr>
+      </thead>
+      <tbody>
+        {% for row in model_comparison %}
+        <tr>
+          <td class="fw-semibold">
+            {{ row.model }}
+            {% if loop.first %}<span class="badge bg-success-subtle text-success-emphasis ms-1">Best F1</span>{% endif %}
+          </td>
+          <td>{{ row.cv_f1 }}</td>
+          <td class="text-muted">&plusmn; {{ row.cv_f1_std }}</td>
+          <td>{{ row.cv_roc_auc }}</td>
+          <td>{{ row.cv_accuracy }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if metrics.feature_importance %}
+<div class="glass-card p-4 mb-4">
+  <h5 class="fw-bold mb-1">Feature Importance</h5>
+  <p class="text-muted small mb-3">Learned across the whole training set, ranked most influential first.</p>
+  {% set max_importance = metrics.feature_importance.values() | max %}
+  {% for feature, importance in metrics.feature_importance.items() %}
+  <div class="d-flex align-items-center gap-3 py-1">
+    <div style="min-width: 130px;" class="small fw-semibold">{{ feature }}</div>
+    <div class="flex-fill" style="background: rgba(128,128,128,0.16); height: 9px; border-radius: 50px;">
+      <div style="width: {{ (importance / max_importance * 100) | round(1) }}%; height: 100%;
+                  background: linear-gradient(90deg, #dc2626, #f87171); border-radius: 50px;"></div>
+    </div>
+    <div class="small text-muted" style="min-width: 52px; text-align: right;">
+      {{ (importance * 100) | round(1) }}%
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h5 class="fw-bold mb-3">Evaluation Charts</h5>
+<div class="row g-4 mb-4">
+  {{ chart_card("confusion_matrix.png", "Confusion Matrix", "Test-set predictions vs actual labels.") }}
+  {{ chart_card("roc_curve.png", "ROC Curve", "True positive rate against false positive rate.") }}
+  {{ chart_card("precision_recall_curve.png", "Precision-Recall Curve", "More informative than ROC on imbalanced data.") }}
+  {{ chart_card("calibration_curve.png", "Probability Calibration", "How closely the confidence score matches observed frequency.") }}
+  {{ chart_card("model_comparison.png", "Algorithm Comparison", "Cross-validated F1 across the candidate models.") }}
+  {{ chart_card("learning_curve.png", "Learning Curve", "Whether more training data would still help.") }}
+  {{ chart_card("feature_importance.png", "Feature Importance", "Impurity-based importance from the tuned forest.") }}
+</div>
+
+<h5 class="fw-bold mb-3">Dataset Exploration</h5>
+<div class="row g-4 mb-4">
+  {{ chart_card("class_balance.png", "Target Class Balance") }}
+  {{ chart_card("marker_boxplots.png", "Key Markers by Risk Class", "", "col-md-12 col-xl-8") }}
+  {{ chart_card("correlation_heatmap.png", "Correlation Heatmap") }}
+  {{ chart_card("age_distribution.png", "Age Distribution") }}
+  {{ chart_card("gender_distribution.png", "Gender Distribution") }}
+  {{ chart_card("stage_distribution.png", "Histologic Stage Distribution") }}
+</div>
+{% endif %}
+
+<div class="glass-card p-4">
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h5 class="fw-bold mb-0">Your Patient Reports</h5>
+    {% if predictions %}<span class="text-muted small">{{ predictions | length }} record(s)</span>{% endif %}
+  </div>
+  {% if predictions %}
+  <div class="table-responsive">
+    <table class="table table-custom align-middle">
+      <thead>
+        <tr><th>Patient</th><th>Result</th><th>Confidence</th><th>Band</th><th>MELD</th><th>Date</th><th>Report</th></tr>
+      </thead>
+      <tbody>
+        {% for p in predictions %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ p.patient_name }}</div>
+            {% if p.patient_id %}<div class="text-muted small">{{ p.patient_id }}</div>{% endif %}
+          </td>
+          <td><span class="badge {{ 'badge-risk-high' if p.result == 'High Risk' else 'badge-risk-low' }}">{{ p.result }}</span></td>
+          <td>{{ p.probability_pct }}%</td>
+          <td>{{ p.risk_level }}</td>
+          <td>{{ p.meld_score if p.meld_score is not none else '-' }}</td>
+          <td class="text-muted small">{{ p.created_at | humandate('%b %d, %Y') }}</td>
+          <td class="text-nowrap">
+            <a href="{{ url_for('export_pdf', prediction_id=p.id) }}" class="btn btn-sm btn-outline-custom">
+              <i class="bi bi-file-earmark-pdf"></i> PDF
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="bi bi-file-earmark-bar-graph"></i>
+    <h5>No reports yet</h5>
+    <p class="mb-3">Every assessment you run becomes a downloadable clinical report.</p>
+    <a href="{{ url_for('prediction') }}" class="btn btn-primary-custom">
+      <i class="bi bi-plus-lg"></i> New Prediction
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

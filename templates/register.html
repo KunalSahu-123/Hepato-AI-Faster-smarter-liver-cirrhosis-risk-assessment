@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Create an Account - Hepato AI{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+      <div class="glass-card p-4 p-md-5 scroll-reveal">
+
+        <div class="text-center mb-4">
+          <svg width="48" height="48" viewBox="0 0 300 300" class="text-primary" aria-hidden="true"><path d="M155,65 C200,55 260,80 270,130 C280,180 265,230 230,250 C200,265 170,260 150,250 C130,240 120,220 125,195 C130,170 145,150 150,130 C155,110 150,85 155,65 Z" fill="currentColor"/><path d="M150,130 C145,150 130,170 105,175 C80,180 55,165 42,145 C30,125 35,100 50,85 C65,70 90,65 115,70 C140,75 150,100 150,130 Z" fill="currentColor"/></svg>
+          <h3 class="fw-bold mt-2">Create Your Account</h3>
+          <p class="text-muted mb-0">Join Hepato AI to start running assessments</p>
+        </div>
+
+        <form method="POST" class="needs-validation" id="register-form" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label-custom" for="full_name">Full Name</label>
+              <input type="text" id="full_name" name="full_name" value="{{ full_name or '' }}"
+                     class="form-control form-control-custom" required minlength="2" maxlength="120"
+                     autocomplete="name" autofocus>
+              <div class="invalid-feedback">Please enter your full name.</div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label-custom" for="email">Email Address</label>
+              <input type="email" id="email" name="email" value="{{ email or '' }}"
+                     class="form-control form-control-custom" required autocomplete="username">
+              <div class="invalid-feedback">Please enter a valid email address.</div>
+              <div class="form-text">This is your login ID.</div>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label-custom" for="organisation">
+                Hospital / Organisation <span class="text-muted">(optional)</span>
+              </label>
+              <input type="text" id="organisation" name="organisation" maxlength="140"
+                     value="{{ organisation or '' }}" class="form-control form-control-custom"
+                     placeholder="e.g. City General Hospital">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label-custom" for="specialisation">
+                Specialisation <span class="text-muted">(optional)</span>
+              </label>
+              <input type="text" id="specialisation" name="specialisation" maxlength="140"
+                     value="{{ specialisation or '' }}" class="form-control form-control-custom"
+                     placeholder="e.g. Hepatology">
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label-custom" for="password">Password</label>
+              <div class="input-group">
+                <input type="password" id="password" name="password"
+                       class="form-control form-control-custom" required
+                       minlength="{{ config.PASSWORD_MIN_LENGTH }}" autocomplete="new-password">
+                <button class="btn btn-outline-custom" type="button" data-toggle-password="password"
+                        aria-label="Show or hide password">
+                  <i class="bi bi-eye"></i>
+                </button>
+              </div>
+              <div class="password-meter mt-2" aria-hidden="true"><span id="strength-bar"></span></div>
+              <div class="form-text">
+                At least {{ config.PASSWORD_MIN_LENGTH }} characters, mixing letters and numbers.
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label-custom" for="confirm_password">Confirm Password</label>
+              <input type="password" id="confirm_password" name="confirm_password"
+                     class="form-control form-control-custom" required
+                     minlength="{{ config.PASSWORD_MIN_LENGTH }}" autocomplete="new-password">
+              <div class="field-error" id="match-error" style="display:none;">
+                Passwords do not match.
+              </div>
+            </div>
+          </div>
+
+          <div class="form-check mt-4">
+            <input class="form-check-input" type="checkbox" id="agree" required>
+            <label class="form-check-label small text-muted" for="agree">
+              I understand Hepato AI is a clinical <em>decision-support</em> tool for educational use
+              and does not provide a medical diagnosis.
+            </label>
+            <div class="invalid-feedback">Please acknowledge this before continuing.</div>
+          </div>
+
+          <button type="submit" class="btn btn-primary-custom w-100 mt-3">
+            <i class="bi bi-person-plus"></i> Create Account
+          </button>
+        </form>
+
+        <p class="text-center text-muted mt-4 mb-0">
+          Already have an account? <a href="{{ url_for('login') }}">Log in</a>
+        </p>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  document.querySelectorAll("[data-toggle-password]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const field = document.getElementById(btn.dataset.togglePassword);
+      const showing = field.type === "text";
+      field.type = showing ? "password" : "text";
+      btn.querySelector("i").className = showing ? "bi bi-eye" : "bi bi-eye-slash";
+    });
+  });
+
+  const password = document.getElementById("password");
+  const confirm = document.getElementById("confirm_password");
+  const matchError = document.getElementById("match-error");
+  const bar = document.getElementById("strength-bar");
+
+  function score(value) {
+    let points = 0;
+    if (value.length >= {{ config.PASSWORD_MIN_LENGTH }}) points++;
+    if (value.length >= 12) points++;
+    if (/[a-z]/.test(value) && /[A-Z]/.test(value)) points++;
+    if (/\d/.test(value)) points++;
+    if (/[^A-Za-z0-9]/.test(value)) points++;
+    return points;
+  }
+
+  password.addEventListener("input", () => {
+    const levels = [
+      ["0%", ""], ["20%", "#e8534f"], ["40%", "#fbbc04"],
+      ["65%", "#fbbc04"], ["85%", "#34a853"], ["100%", "#34a853"]
+    ];
+    const [width, colour] = levels[Math.min(score(password.value), 5)];
+    bar.style.width = password.value ? width : "0%";
+    bar.style.background = colour;
+  });
+
+  // Mirrors the server-side check so a mismatch doesn't cost a round trip.
+  function checkMatch() {
+    const mismatch = confirm.value && password.value !== confirm.value;
+    matchError.style.display = mismatch ? "block" : "none";
+    confirm.setCustomValidity(mismatch ? "Passwords do not match." : "");
+  }
+  password.addEventListener("input", checkMatch);
+  confirm.addEventListener("input", checkMatch);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Services - Hepato AI{% endblock %}
+{% block content %}
+<div class="container py-5">
+
+  <div class="text-center mb-5 scroll-reveal">
+    <h1 class="fw-bold">What Hepato AI Offers</h1>
+    <p class="text-muted mb-0">
+      Everything from a single patient assessment to a scored clinic list, with the evidence attached.
+    </p>
+  </div>
+
+  <div class="row g-4">
+    {% set services = [
+      ('bi-clipboard2-pulse-fill', 'Risk Prediction',
+       'A calibrated cirrhosis probability from 16 clinical inputs, with a low / moderate / high band and a confidence figure. Reference ranges sit beside every field as you type.',
+       'prediction', 'Run an assessment'),
+      ('bi-bezier2', 'Per-Patient Explanations',
+       'Leave-one-out driver bars: each marker is replaced by the training median to measure how far it pushed this particular score, up or down. Abnormal values are flagged against reference ranges.',
+       none, none),
+      ('bi-calculator-fill', 'Clinical Scores',
+       'MELD, FIB-4, APRI and a partial Child-Pugh computed from the same inputs, each with its severity band and a plain-language reading, so the model output can be checked against established scores.',
+       none, none),
+      ('bi-file-earmark-arrow-up-fill', 'Batch CSV Scoring',
+       'Upload a clinic list and score every row at once. A downloadable template matches the expected columns; rejected rows come back with the exact per-field reason.',
+       'batch_predict', 'Upload a CSV'),
+      ('bi-camera-fill', 'Lab Report OCR',
+       'Point Tesseract at a scanned or photographed lab report and the recognised marker values are pre-filled into the form for you to review before submitting.',
+       none, none),
+      ('bi-columns-gap', 'Side-by-Side Comparison',
+       'Put up to four assessments next to each other. Differences from the first record are highlighted and numeric drift is shown with direction arrows.',
+       'compare', 'Compare records'),
+      ('bi-graph-up', 'Analytics Dashboard',
+       'Totals, risk split, mean probability and a monthly trend line, plus the marker distribution across your own patient set.',
+       'dashboard', 'Open dashboard'),
+      ('bi-clock-history', 'Prediction History',
+       'Every assessment you have run, searchable by patient and filterable by risk band, with paging, bulk delete and free-text clinical notes per record.',
+       'history', 'View history'),
+      ('bi-file-earmark-pdf-fill', 'PDF & CSV Export',
+       'A formatted PDF report per patient, a batch summary PDF, a CSV of your whole history, and a full JSON export of your account data.',
+       none, none),
+      ('bi-bar-chart-line-fill', 'Model Transparency',
+       'Confusion matrix, ROC and precision-recall curves, calibration plot, learning curve, algorithm comparison and global feature importance — regenerated on every training run.',
+       'reports', 'See the evaluation'),
+      ('bi-shield-lock-fill', 'Security & Audit',
+       'Hashed passwords, CSRF protection on every form, login lockout after repeated failures, single-use password-reset tokens, role-based access and an append-only audit trail.',
+       none, none),
+      ('bi-braces', 'JSON API',
+       'Session-authenticated endpoints for prediction, patient records, history, dashboard aggregates, model metadata and the input schema — enough to drive an external client.',
+       none, none),
+    ] %}
+    {% for icon, title, desc, endpoint, cta in services %}
+    <div class="col-md-6 col-lg-4">
+      <div class="glass-card p-4 h-100 scroll-reveal d-flex flex-column">
+        <i class="bi {{ icon }} fs-2 text-primary mb-3 d-block"></i>
+        <h5 class="fw-bold">{{ title }}</h5>
+        <p class="text-muted mb-3 small flex-grow-1">{{ desc }}</p>
+        {% if endpoint and current_user.is_authenticated %}
+        <a href="{{ url_for(endpoint) }}" class="btn btn-sm btn-outline-custom align-self-start">
+          {{ cta }} <i class="bi bi-arrow-right"></i>
+        </a>
+        {% elif endpoint %}
+        <a href="{{ url_for('login') }}" class="btn btn-sm btn-outline-custom align-self-start">
+          Log in to use <i class="bi bi-arrow-right"></i>
+        </a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="glass-card p-4 p-md-5 mt-5 scroll-reveal">
+    <div class="section-title"><i class="bi bi-braces"></i> API Reference</div>
+    <p class="text-muted small">
+      All endpoints return JSON. Everything that touches patient data requires an authenticated
+      session; <code>/api/schema</code> and <code>/health</code> are open. Send
+      <code>X-CSRFToken</code> on POST requests &mdash; the token is exposed in the page's
+      <code>&lt;meta name="csrf-token"&gt;</code> tag.
+    </p>
+    <div class="table-responsive">
+      <table class="table table-custom align-middle mb-0">
+        <thead>
+          <tr><th>Method</th><th>Endpoint</th><th>Returns</th></tr>
+        </thead>
+        <tbody>
+          {% set endpoints = [
+            ('POST', '/api/predict', 'Scores one patient from a JSON body and returns probability, risk band, clinical scores and drivers. Saves the record unless you send "save": false.'),
+            ('GET', '/api/patients', 'Your prediction records, newest first, paginated.'),
+            ('GET', '/api/patients/&lt;id&gt;', 'One record in full, including stored explanation and notes.'),
+            ('GET', '/api/history', 'Compact history feed for charting.'),
+            ('GET', '/api/dashboard', 'Aggregates: totals, risk split, mean probability, monthly trend.'),
+            ('GET', '/api/model', 'Model name, training timestamp, evaluation metrics and feature importance.'),
+            ('GET', '/api/schema', 'The 16 input fields with type, units, reference range and allowed values.'),
+            ('GET', '/health', 'Unauthenticated liveness probe: app status, database reachability, model state.'),
+          ] %}
+          {% for method, path, returns in endpoints %}
+          <tr>
+            <td>
+              <span class="badge {{ 'bg-warning-subtle text-warning-emphasis' if method == 'POST' else 'bg-primary-subtle text-primary-emphasis' }}">
+                {{ method }}
+              </span>
+            </td>
+            <td><code>{{ path | safe }}</code></td>
+            <td class="text-muted small">{{ returns }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="text-muted small mt-3 mb-0">
+      <i class="bi bi-lightbulb"></i>
+      Start from <a href="{{ url_for('api_schema') }}"><code>/api/schema</code></a>
+      &mdash; it describes exactly what <code>/api/predict</code> expects, and needs no login.
+    </p>
+  </div>
+
+  <div class="disclaimer-box mt-4">
+    <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+    Every feature listed here is decision support for educational use. None of it constitutes a
+    medical diagnosis, and no output should change patient management without clinician review.
+  </div>
+
+</div>
+{% endblock %}

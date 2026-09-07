@@ -1,0 +1,261 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "batch" %}
+{% block title %}Batch Prediction - Hepato AI{% endblock %}
+{% block dashboard_content %}
+
+<div class="page-header">
+  <div>
+    <h1>Batch Prediction</h1>
+    <p>Score an entire cohort from one CSV file &mdash; up to 500 patients per upload.</p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('batch_template') }}" class="btn btn-outline-custom">
+      <i class="bi bi-download"></i> Download Template
+    </a>
+    <a href="{{ url_for('prediction') }}" class="btn btn-outline-custom">
+      <i class="bi bi-person"></i> Single Patient
+    </a>
+  </div>
+</div>
+
+{% if model_error %}
+<div class="alert alert-danger">
+  <strong><i class="bi bi-exclamation-octagon-fill"></i> Model unavailable.</strong> {{ model_error }}
+</div>
+{% else %}
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="glass-card p-4">
+      <h5 class="fw-bold mb-1">Upload a CSV</h5>
+      <p class="text-muted small mb-3">
+        Every row is validated independently, so one bad row never discards the rest of the file.
+        Rejected rows are listed with the reason.
+      </p>
+
+      <form method="POST" enctype="multipart/form-data" id="batch-form"
+            data-loading-message="Scoring your cohort...">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div id="batch-drop-zone" class="dropzone" role="button" tabindex="0"
+             aria-label="Choose a CSV file of patients to score">
+          <i class="bi bi-filetype-csv"></i>
+          <p class="mb-1 fw-semibold mt-2" id="batch-drop-label">Click to choose a CSV or drag &amp; drop</p>
+          <p class="text-muted small mb-0">
+            .csv only &middot; up to {{ config.MAX_REPORT_SIZE_MB }}MB &middot; max 500 rows
+          </p>
+          <input type="file" id="batch-file-input" name="batch_file" accept=".csv" hidden required>
+        </div>
+
+        <button type="submit" class="btn btn-primary-custom w-100 mt-3" id="batch-submit" disabled>
+          <i class="bi bi-cpu"></i> Score All Patients
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="glass-card p-4">
+      <h6 class="fw-bold mb-2"><i class="bi bi-info-circle text-primary"></i> Expected Columns</h6>
+      <p class="text-muted small mb-3">
+        Either the app's field names or the original dataset's column names work, case-insensitively
+        (<code>SGOT</code>, <code>sgot</code> and <code>AST</code> all map to the same feature).
+        <code>patient_name</code> and <code>patient_id</code> are optional.
+      </p>
+      <div class="d-flex flex-wrap gap-1">
+        {% for field, meta in field_meta.items() %}
+          <span class="badge bg-primary-subtle text-primary-emphasis" title="{{ meta.label }}">{{ field }}</span>
+        {% endfor %}
+      </div>
+      <hr>
+      <h6 class="fw-bold mb-2">Value Conventions</h6>
+      <table class="panel-table">
+        <tbody>
+          <tr><td class="text-muted">gender</td><td><code>M</code> or <code>F</code></td></tr>
+          <tr><td class="text-muted">ascites, hepatomegaly, spiders</td><td><code>Y</code> or <code>N</code></td></tr>
+          <tr><td class="text-muted">edema</td><td><code>N</code>, <code>S</code> or <code>Y</code></td></tr>
+          <tr><td class="text-muted">stage</td><td><code>1</code>&ndash;<code>4</code></td></tr>
+        </tbody>
+      </table>
+      <a href="{{ url_for('batch_template') }}" class="btn btn-outline-custom w-100 mt-2">
+        <i class="bi bi-file-earmark-arrow-down"></i> Template with 2 Example Rows
+      </a>
+    </div>
+  </div>
+</div>
+
+{% if processed is defined %}
+<div class="row g-3 mt-4">
+  <div class="col-md-4">
+    <div class="stat-card bg-primary-grad">
+      <i class="bi bi-list-ol stat-icon"></i>
+      <div class="stat-value">{{ processed }}</div><div>Rows Processed</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="stat-card bg-success-grad">
+      <i class="bi bi-check2-circle stat-icon"></i>
+      <div class="stat-value">{{ saved | length }}</div><div>Scored &amp; Saved</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="stat-card bg-danger-grad">
+      <i class="bi bi-x-octagon stat-icon"></i>
+      <div class="stat-value">{{ failed | length }}</div><div>Rejected</div>
+    </div>
+  </div>
+</div>
+
+{% if saved %}
+<div class="glass-card p-4 mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+      <h5 class="fw-bold mb-0">Batch Results</h5>
+      <p class="text-muted small mb-0">
+        {{ saved | selectattr('result', 'equalto', 'High Risk') | list | length }} of
+        {{ saved | length }} scored high risk. All rows were saved to your history.
+      </p>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('batch_summary_pdf') }}" class="btn btn-outline-custom">
+        <i class="bi bi-file-earmark-pdf"></i> Summary PDF
+      </a>
+      <a href="{{ url_for('history') }}" class="btn btn-primary-custom">
+        <i class="bi bi-clock-history"></i> Open in History
+      </a>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-custom align-middle">
+      <thead>
+        <tr>
+          <th>#</th><th>Patient</th><th>Age</th><th>Sex</th><th>Stage</th>
+          <th>Result</th><th>Confidence</th><th>Band</th><th>MELD</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in saved %}
+        <tr>
+          <td class="text-muted">{{ loop.index }}</td>
+          <td>
+            <div class="fw-semibold">{{ r.patient_name }}</div>
+            {% if r.patient_id %}<div class="text-muted small">{{ r.patient_id }}</div>{% endif %}
+          </td>
+          <td>{{ r.age | round(0) | int if r.age else '-' }}</td>
+          <td>{{ {'M': 'Male', 'F': 'Female'}.get(r.gender, '-') }}</td>
+          <td>{{ r.stage | int if r.stage else '-' }}</td>
+          <td><span class="badge {{ 'badge-risk-high' if r.result == 'High Risk' else 'badge-risk-low' }}">{{ r.result }}</span></td>
+          <td>{{ r.probability_pct }}%</td>
+          <td>{{ r.risk_level }}</td>
+          <td>{{ r.meld_score if r.meld_score is not none else '-' }}</td>
+          <td class="text-nowrap">
+            <a href="{{ url_for('prediction_detail', prediction_id=r.id) }}"
+               class="btn btn-sm btn-outline-custom" title="View detail"><i class="bi bi-eye"></i></a>
+            <a href="{{ url_for('export_pdf', prediction_id=r.id) }}"
+               class="btn btn-sm btn-outline-custom" title="Download PDF"><i class="bi bi-file-earmark-pdf"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if failed %}
+<div class="glass-card p-4 mt-4">
+  <h5 class="fw-bold mb-1 text-danger"><i class="bi bi-exclamation-triangle-fill"></i> Rejected Rows</h5>
+  <p class="text-muted small mb-3">
+    These rows were left unscored. Fix the values in your spreadsheet and upload again &mdash;
+    already-scored rows are unaffected.
+  </p>
+  <div class="table-responsive">
+    <table class="table table-custom align-middle mb-0">
+      <thead><tr><th style="width: 90px;">CSV Row</th><th>Patient</th><th>Problems</th></tr></thead>
+      <tbody>
+        {% for f in failed %}
+        <tr>
+          <td class="fw-semibold">{{ f.row }}</td>
+          <td>{{ f.patient_name }}</td>
+          <td>
+            <ul class="mb-0 small text-muted ps-3">
+              {% for field, message in f.errors.items() %}
+              <li>
+                {% if field != '_' %}<strong>{{ field_meta.get(field, {}).get('label', field) }}:</strong>{% endif %}
+                {{ message }}
+              </li>
+              {% endfor %}
+            </ul>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+{% if not model_error %}
+<script>
+(function () {
+  const zone = document.getElementById("batch-drop-zone");
+  const input = document.getElementById("batch-file-input");
+  const label = document.getElementById("batch-drop-label");
+  const submit = document.getElementById("batch-submit");
+  if (!zone || !input) return;
+
+  const MAX_BYTES = {{ config.MAX_CONTENT_LENGTH }};
+
+  function openPicker() { input.click(); }
+  zone.addEventListener("click", openPicker);
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openPicker(); }
+  });
+
+  ["dragenter", "dragover"].forEach(evt =>
+    zone.addEventListener(evt, (e) => { e.preventDefault(); zone.classList.add("dragover"); })
+  );
+  ["dragleave", "drop"].forEach(evt =>
+    zone.addEventListener(evt, (e) => { e.preventDefault(); zone.classList.remove("dragover"); })
+  );
+
+  // Assigning to input.files keeps the plain multipart POST working for a
+  // dropped file, so no separate AJAX path is needed.
+  zone.addEventListener("drop", (e) => {
+    if (e.dataTransfer.files.length) {
+      input.files = e.dataTransfer.files;
+      accept(input.files[0]);
+    }
+  });
+  input.addEventListener("change", () => {
+    if (input.files.length) accept(input.files[0]);
+  });
+
+  function accept(file) {
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      showToast("Only .csv files are supported.", "danger");
+      input.value = "";
+      submit.disabled = true;
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      showToast("That file is " + (file.size / 1048576).toFixed(1) + "MB, over the " +
+                {{ config.MAX_REPORT_SIZE_MB }} + "MB limit.", "danger");
+      input.value = "";
+      submit.disabled = true;
+      return;
+    }
+    label.textContent = file.name + " (" + (file.size / 1024).toFixed(0) + " KB)";
+    zone.classList.add("has-file");
+    submit.disabled = false;
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}

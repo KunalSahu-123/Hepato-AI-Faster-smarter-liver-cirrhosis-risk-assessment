@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="app-shell">
+  <aside class="sidebar">
+    <a class="side-link {{ 'active' if active_page=='dashboard' }}" href="{{ url_for('dashboard') }}">
+      <i class="bi bi-grid-1x2-fill"></i> Dashboard
+    </a>
+    <a class="side-link {{ 'active' if active_page=='prediction' }}" href="{{ url_for('prediction') }}">
+      <i class="bi bi-clipboard2-pulse-fill"></i> New Prediction
+    </a>
+    <a class="side-link {{ 'active' if active_page=='history' }}" href="{{ url_for('history') }}">
+      <i class="bi bi-clock-history"></i> History
+    </a>
+    <a class="side-link {{ 'active' if active_page=='profile' }}" href="{{ url_for('profile') }}">
+      <i class="bi bi-person-fill"></i> Profile
+    </a>
+    {% if current_user.is_admin %}
+    <hr class="sidebar-divider">
+    <span class="side-label">Administration</span>
+    <a class="side-link {{ 'active' if active_page=='batch' }}" href="{{ url_for('batch_predict') }}">
+      <i class="bi bi-upload"></i> Batch Upload
+    </a>
+    <a class="side-link {{ 'active' if active_page=='compare' }}" href="{{ url_for('compare') }}">
+      <i class="bi bi-columns-gap"></i> Compare
+    </a>
+    <a class="side-link {{ 'active' if active_page=='reports' }}" href="{{ url_for('reports') }}">
+      <i class="bi bi-file-earmark-bar-graph-fill"></i> Reports
+    </a>
+    <a class="side-link {{ 'active' if active_page=='admin' }}" href="{{ url_for('admin') }}">
+      <i class="bi bi-shield-lock-fill"></i> Admin Panel
+    </a>
+    <a class="side-link {{ 'active' if active_page=='admin_messages' }}" href="{{ url_for('admin_messages') }}">
+      <i class="bi bi-envelope-fill"></i> Messages
+    </a>
+    <a class="side-link {{ 'active' if active_page=='admin_audit' }}" href="{{ url_for('admin_audit') }}">
+      <i class="bi bi-journal-text"></i> Audit Trail
+    </a>
+    {% endif %}
+  </aside>
+  <div class="main-content">
+    {% block dashboard_content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

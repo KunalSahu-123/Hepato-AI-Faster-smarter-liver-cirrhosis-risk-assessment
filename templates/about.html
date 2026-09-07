@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}About - Hepato AI{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-10">
+
+      <div class="text-center mb-5 scroll-reveal">
+        <h1 class="fw-bold">About Hepato AI</h1>
+        <p class="text-muted mb-0">
+          A final-year B.Tech major project: machine-learning decision support for liver cirrhosis
+          risk, built end to end as a deployable web application.
+        </p>
+      </div>
+
+      <div class="row g-4 mb-4">
+        <div class="col-md-6">
+          <div class="glass-card p-4 h-100 scroll-reveal">
+            <div class="section-title"><i class="bi bi-question-circle"></i> The problem</div>
+            <p class="text-muted mb-0">
+              Cirrhosis is frequently caught late. Early symptoms are vague, the diagnosis leans on a
+              scatter of lab markers that have to be read together rather than one at a time, and
+              biopsy &mdash; still the reference standard &mdash; is invasive enough that it is not a
+              screening tool. The practical gap is triage: deciding quickly which patients deserve a
+              closer look.
+            </p>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="glass-card p-4 h-100 scroll-reveal">
+            <div class="section-title"><i class="bi bi-lightbulb"></i> The approach</div>
+            <p class="text-muted mb-0">
+              Hepato AI trains a Random Forest on routine markers &mdash; bilirubin, albumin, copper,
+              alkaline phosphatase, SGOT, triglycerides, platelets, prothrombin time &mdash; alongside
+              demographics and physical signs such as ascites, hepatomegaly, spider angiomas and
+              oedema. The output is a <em>calibrated</em> probability, so 0.70 genuinely means about
+              70 in 100, and every score is reported with the markers that produced it.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 mb-4 scroll-reveal">
+        <div class="section-title"><i class="bi bi-database"></i> Dataset</div>
+        <div class="alert alert-info small">
+          <i class="bi bi-info-circle-fill"></i>
+          <strong>The bundled dataset is synthetic.</strong>
+          It follows the schema, value ranges and marker correlations of the Mayo Clinic primary
+          biliary cirrhosis (PBC) trial dataset, but the rows are generated
+          (<code>generate_dataset.py</code>, fixed seed) rather than taken from real patients. This
+          keeps the whole pipeline reproducible without redistributing clinical data. To train on the
+          genuine dataset, download <code>cirrhosis.csv</code> from Kaggle or the UCI ML repository,
+          drop it in at <code>dataset/cirrhosis.csv</code> with the same column names, and re-run
+          <code>python train_model.py</code> &mdash; no code changes are needed.
+        </div>
+        <p class="text-muted">
+          Either way, histologic stage 4 is the high-risk class and stages 1&ndash;3 form the
+          comparison group. Every figure shown on this site is measured on whichever dataset the
+          model was last trained against.
+        </p>
+        {% if metrics and metrics.dataset_summary %}
+        {% set ds = metrics.dataset_summary %}
+        <div class="row g-3">
+          <div class="col-6 col-md-3">
+            <div class="metric-tile">
+              <div class="metric-value">{{ ds.rows }}</div>
+              <div class="metric-name">Rows in dataset</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="metric-tile">
+              <div class="metric-value">{{ ds.features }}</div>
+              <div class="metric-name">Input features</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="metric-tile">
+              <div class="metric-value">{{ ds.positive_rate | pct }}</div>
+              <div class="metric-name">High-risk cases</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="metric-tile">
+              <div class="metric-value">{{ ds.missing_cells }}</div>
+              <div class="metric-name">Missing cells imputed</div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="glass-card p-4 mb-4 scroll-reveal">
+        <div class="section-title"><i class="bi bi-diagram-2"></i> Pipeline</div>
+        <div class="row g-3">
+          {% set pipeline = [
+            ('1', 'Clean', 'Drop identifiers, coerce types, standardise the Y/N/S and M/F coding, and map histologic stage onto the binary target.'),
+            ('2', 'Impute', 'Median for numeric markers, most-frequent for categoricals — fitted on the training split only, so test data never leaks in.'),
+            ('3', 'Encode & scale', 'Ordinal encoding for categoricals, standard scaling for numerics; the fitted transformers are saved alongside the model.'),
+            ('4', 'Select', 'Logistic Regression, Random Forest, Gradient Boosting, SVM and KNN are compared by stratified cross-validated ROC-AUC.'),
+            ('5', 'Tune', 'Grid search over forest depth, split rules and feature sampling, scored by ROC-AUC rather than raw accuracy.'),
+            ('6', 'Calibrate', 'Isotonic calibration is applied when it lowers the Brier score, so the probability can be read as a probability.'),
+          ] %}
+          {% for step, title, desc in pipeline %}
+          <div class="col-md-6">
+            <div class="d-flex gap-3">
+              <span class="pipeline-step">{{ step }}</span>
+              <div>
+                <div class="fw-semibold">{{ title }}</div>
+                <p class="text-muted small mb-0">{{ desc }}</p>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% if metrics %}
+      <div class="glass-card p-4 mb-4 scroll-reveal">
+        <div class="section-title"><i class="bi bi-clipboard-check"></i> Held-out performance</div>
+        <p class="text-muted small">
+          {{ metrics.model_name }}, trained {{ metrics.trained_at }} on {{ metrics.train_size }}
+          patients and scored on {{ metrics.test_size }} the model never saw.
+        </p>
+        <div class="row g-3">
+          {% set shown = [
+            ('Accuracy', metrics.accuracy, 'Share of correct calls overall.'),
+            ('Recall', metrics.recall, 'Of truly high-risk patients, how many were caught.'),
+            ('Precision', metrics.precision, 'Of those flagged high-risk, how many were.'),
+            ('ROC-AUC', metrics.roc_auc, 'Ranking quality across every threshold.'),
+          ] %}
+          {% for label, value, note in shown %}
+          <div class="col-6 col-lg-3">
+            <div class="metric-tile h-100">
+              <div class="metric-value">{{ value | pct }}</div>
+              <div class="metric-name">{{ label }}</div>
+              <p class="text-muted mb-0 mt-1" style="font-size: 0.7rem;">{{ note }}</p>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <p class="text-muted small mt-3 mb-0">
+          Recall matters more than accuracy here: missing a cirrhotic patient costs more than an
+          unnecessary follow-up test, which is why model selection and tuning both optimise ROC-AUC.
+          {% if current_user.is_authenticated %}
+          <a href="{{ url_for('reports') }}">See the full report, curves and comparison &rarr;</a>
+          {% endif %}
+        </p>
+      </div>
+      {% else %}
+      <div class="alert alert-warning scroll-reveal">
+        <i class="bi bi-exclamation-triangle"></i>
+        <strong>No trained model found.</strong> Run <code>python train_model.py</code> to generate
+        the model, encoders, metrics and evaluation charts.
+      </div>
+      {% endif %}
+
+      <div class="row g-4 mb-4">
+        <div class="col-md-6">
+          <div class="glass-card p-4 h-100 scroll-reveal">
+            <div class="section-title"><i class="bi bi-bullseye"></i> Objectives</div>
+            <ul class="text-muted mb-0 small">
+              <li>Give clinicians a fast, explainable preliminary risk screen</li>
+              <li>Report calibrated probabilities, not bare labels</li>
+              <li>Show the markers behind every individual score</li>
+              <li>Sit the ML output next to established scores (MELD, FIB-4, APRI, Child-Pugh)</li>
+              <li>Keep a per-patient history so change over time is visible</li>
+              <li>Produce shareable PDF and CSV reports</li>
+              <li>Enforce authentication, access control and audit logging throughout</li>
+            </ul>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="glass-card p-4 h-100 scroll-reveal">
+            <div class="section-title"><i class="bi bi-stack"></i> Technology</div>
+            <table class="panel-table mb-0">
+              <tbody>
+                <tr><td class="text-muted">Backend</td><td class="fw-semibold">Flask, SQLAlchemy, Flask-Login, Flask-WTF</td></tr>
+                <tr><td class="text-muted">Machine learning</td><td class="fw-semibold">scikit-learn, pandas, NumPy, joblib</td></tr>
+                <tr><td class="text-muted">Frontend</td><td class="fw-semibold">Jinja2, Bootstrap 5, Chart.js</td></tr>
+                <tr><td class="text-muted">Reporting</td><td class="fw-semibold">ReportLab, Matplotlib, Seaborn</td></tr>
+                <tr><td class="text-muted">OCR</td><td class="fw-semibold">
+                  Tesseract + Pillow
+                  <span class="badge {{ 'bg-success-subtle text-success-emphasis' if ocr_available else 'bg-secondary-subtle text-secondary-emphasis' }}">
+                    {{ 'available' if ocr_available else 'not installed' }}
+                  </span>
+                </td></tr>
+                <tr><td class="text-muted">Database</td><td class="fw-semibold">SQLite by default, any SQLAlchemy URL in production</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card p-4 mb-4 scroll-reveal">
+        <div class="section-title"><i class="bi bi-exclamation-diamond"></i> Known limitations</div>
+        <p class="text-muted small mb-2">
+          Stating these plainly is part of the work, not a disclaimer bolted on afterwards:
+        </p>
+        <ul class="text-muted small mb-0">
+          <li>
+            <strong>The bundled data is synthetic.</strong> The reported accuracy therefore measures
+            whether the pipeline learns the structure that was generated into the data &mdash; it is
+            not evidence of clinical performance. Retraining on the real PBC dataset is a one-file
+            swap, and the honest numbers are whatever that run produces.
+          </li>
+          <li>
+            The PBC schema itself covers a single disease aetiology from a 1970s&ndash;80s trial
+            cohort. PBC is one cause of cirrhosis among many, so even the real dataset would not
+            represent a general modern population.
+          </li>
+          <li>
+            The target is histologic <em>stage 4</em>, which is a proxy for cirrhosis rather than a
+            direct clinical diagnosis.
+          </li>
+          <li>
+            No external validation on an independent cohort has been performed, so held-out figures
+            are optimistic for real-world use.
+          </li>
+          <li>
+            Feature importance and leave-one-out drivers describe how the <em>model</em> behaves. They
+            are not statements about causation in the patient.
+          </li>
+          <li>
+            <code>Stage</code> dominates the learned importance, and it is itself a histology finding
+            &mdash; so the model leans on information that comes from the same biopsy the target is
+            derived from. Read the marker-driven part of the explanation with that in mind.
+          </li>
+          <li>
+            Child-Pugh is computed only in part: encephalopathy grade is not among the dataset's
+            inputs, so that component is omitted and the score is reported as partial.
+          </li>
+        </ul>
+      </div>
+
+      <div class="disclaimer-box">
+        <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+        Hepato AI is a decision-support tool built for academic demonstration. It does not replace
+        clinical judgment, laboratory confirmation, or a licensed physician's diagnosis.
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

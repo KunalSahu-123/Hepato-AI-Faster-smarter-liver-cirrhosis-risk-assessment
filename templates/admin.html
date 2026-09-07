@@ -1,0 +1,224 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "admin" %}
+{% block title %}Admin Panel - Hepato AI{% endblock %}
+{% block dashboard_content %}
+
+<div class="page-header">
+  <div>
+    <h1><i class="bi bi-shield-lock-fill text-primary"></i> Admin Panel</h1>
+    <p>System-wide users, activity and model status.</p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('admin_messages') }}" class="btn btn-outline-custom">
+      <i class="bi bi-envelope"></i> Messages
+      {% if unread_messages %}<span class="badge bg-danger ms-1">{{ unread_messages }}</span>{% endif %}
+    </a>
+    <a href="{{ url_for('admin_audit') }}" class="btn btn-outline-custom">
+      <i class="bi bi-journal-text"></i> Audit Trail
+    </a>
+    <a href="{{ url_for('admin_export_patients') }}" class="btn btn-primary-custom">
+      <i class="bi bi-download"></i> Export All Patients
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-primary-grad">
+      <i class="bi bi-people-fill stat-icon"></i>
+      <div class="stat-value">{{ total_users }}</div>
+      <div>Total Users</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-success-grad">
+      <i class="bi bi-person-check-fill stat-icon"></i>
+      <div class="stat-value">{{ active_users }}</div>
+      <div>Active Accounts</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-warning-grad">
+      <i class="bi bi-clipboard2-pulse-fill stat-icon"></i>
+      <div class="stat-value">{{ total_predictions }}</div>
+      <div>Total Predictions</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-danger-grad">
+      <i class="bi bi-exclamation-octagon-fill stat-icon"></i>
+      <div class="stat-value">{{ high_risk }}</div>
+      <div>High Risk Cases</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-lg-7">
+    <div class="glass-card p-4 h-100">
+      <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+        <div>
+          <h5 class="fw-bold mb-0">Model Status</h5>
+          <p class="text-muted small mb-0">The artifact currently loaded in memory.</p>
+        </div>
+        <form method="POST" action="{{ url_for('admin_reload_model') }}" data-show-loading="false">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline-custom" title="Re-read the model file from disk">
+            <i class="bi bi-arrow-clockwise"></i> Reload Model
+          </button>
+        </form>
+      </div>
+
+      {% if model_info.available %}
+        {% if model_info.is_stale %}
+        <div class="alert alert-warning small py-2">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          This model was pickled by a different scikit-learn version than the one running.
+          Predictions still work, but retraining is recommended:
+          <code>python train_model.py</code>
+        </div>
+        {% endif %}
+        <table class="panel-table">
+          <tbody>
+            <tr><td class="text-muted">Status</td><td><span class="status-pill status-normal">LOADED</span></td></tr>
+            <tr><td class="text-muted">Algorithm</td><td class="fw-semibold">{{ model_info.name }}</td></tr>
+            <tr><td class="text-muted">Trained</td><td class="fw-semibold">{{ model_info.trained_at }}</td></tr>
+            <tr><td class="text-muted">Test accuracy</td><td class="fw-semibold">{{ model_info.accuracy | pct }}</td></tr>
+            <tr><td class="text-muted">ROC-AUC</td><td class="fw-semibold">{{ model_info.roc_auc | pct }}</td></tr>
+            <tr><td class="text-muted">scikit-learn (artifact)</td><td class="fw-semibold">{{ model_info.sklearn_version }}</td></tr>
+            <tr>
+              <td class="text-muted">OCR engine</td>
+              <td>
+                {% if ocr_available %}
+                  <span class="status-pill status-normal">AVAILABLE</span>
+                {% else %}
+                  <span class="status-pill status-low">NOT INSTALLED</span>
+                  <span class="text-muted small d-block">Tesseract missing &mdash; manual entry only.</span>
+                {% endif %}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <a href="{{ url_for('reports') }}" class="btn btn-outline-custom btn-sm mt-3">
+          <i class="bi bi-graph-up"></i> Full performance report
+        </a>
+      {% else %}
+        <div class="alert alert-danger mb-0">
+          <strong><i class="bi bi-exclamation-octagon-fill"></i> Model not loaded.</strong>
+          {{ model_info.error }}
+          <div class="mt-2"><code>python train_model.py</code></div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="glass-card p-4 h-100">
+      <h5 class="fw-bold mb-3">Recent Activity</h5>
+      {% if recent_logs %}
+      <ul class="list-unstyled mb-0 activity-feed">
+        {% for log in recent_logs %}
+        <li class="d-flex justify-content-between gap-2 py-2 border-bottom">
+          <div>
+            <div class="small">{{ log.action }}</div>
+            <div class="text-muted" style="font-size: 0.74rem;">
+              {{ log.user.email if log.user else (log.actor_email or 'System') }}
+              {% if log.ip_address %} &middot; {{ log.ip_address }}{% endif %}
+            </div>
+          </div>
+          <span class="text-muted small text-nowrap">{{ log.timestamp | humandate('%d %b, %H:%M') }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      <a href="{{ url_for('admin_audit') }}" class="btn btn-outline-custom btn-sm mt-3 w-100">
+        View the full audit trail
+      </a>
+      {% else %}
+      <p class="text-muted small mb-0">No activity recorded yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="glass-card p-4">
+  <h5 class="fw-bold mb-1">Manage Users</h5>
+  <p class="text-muted small mb-3">
+    Deactivating an account blocks login and signs the user out on their next request. Deleting one
+    also deletes all of their prediction records; audit entries are kept but detached.
+  </p>
+  <div class="table-responsive">
+    <table class="table table-custom align-middle">
+      <thead>
+        <tr>
+          <th>Name</th><th>Email</th><th>Organisation</th><th>Role</th><th>Status</th>
+          <th>Predictions</th><th>Last Login</th><th>Joined</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>
+            <div class="fw-semibold">
+              {{ u.full_name }}
+              {% if u.id == current_user.id %}<span class="badge bg-primary-subtle text-primary-emphasis">you</span>{% endif %}
+            </div>
+            {% if u.specialisation %}<div class="text-muted small">{{ u.specialisation }}</div>{% endif %}
+          </td>
+          <td class="small">{{ u.email }}</td>
+          <td class="small text-muted">{{ u.organisation or '—' }}</td>
+          <td>
+            <span class="badge {{ 'bg-warning-subtle text-warning-emphasis' if u.is_admin else 'bg-secondary-subtle text-secondary-emphasis' }} text-uppercase">
+              {{ u.role }}
+            </span>
+          </td>
+          <td>
+            {% if u.is_locked %}
+              <span class="badge bg-danger">Locked</span>
+            {% elif u.is_active_account %}
+              <span class="badge bg-success">Active</span>
+            {% else %}
+              <span class="badge bg-secondary">Inactive</span>
+            {% endif %}
+          </td>
+          <td class="fw-semibold">{{ prediction_counts.get(u.id, 0) }}</td>
+          <td class="text-muted small text-nowrap">{{ u.last_login_at | humandate('%d %b, %H:%M') }}</td>
+          <td class="text-muted small text-nowrap">{{ u.created_at | humandate('%d %b %Y') }}</td>
+          <td>
+            {% if u.id == current_user.id %}
+              <span class="text-muted small">—</span>
+            {% else %}
+            <div class="d-flex gap-1 flex-wrap">
+              <form method="POST" action="{{ url_for('admin_toggle_active', user_id=u.id) }}"
+                    data-show-loading="false">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-outline-custom text-nowrap">
+                  {{ 'Deactivate' if u.is_active_account else 'Activate' }}
+                </button>
+              </form>
+              <form method="POST" action="{{ url_for('admin_toggle_role', user_id=u.id) }}"
+                    data-show-loading="false"
+                    data-confirm="Change {{ u.email }} to a{{ ' standard user' if u.is_admin else 'n administrator' }}?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-outline-custom text-nowrap">
+                  {{ 'Make user' if u.is_admin else 'Make admin' }}
+                </button>
+              </form>
+              <form method="POST" action="{{ url_for('admin_delete_user', user_id=u.id) }}"
+                    data-show-loading="false"
+                    data-confirm="Delete {{ u.email }} and all {{ prediction_counts.get(u.id, 0) }} of their prediction records? This cannot be undone.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-outline-danger" title="Delete user">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

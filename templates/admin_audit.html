@@ -1,0 +1,123 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "admin_audit" %}
+{% block title %}Audit Trail - Admin | Hepato AI{% endblock %}
+{% block dashboard_content %}
+
+{% set categories = [
+  ('', 'All activity', 'bi-list-ul'),
+  ('auth', 'Authentication', 'bi-key'),
+  ('prediction', 'Predictions', 'bi-cpu'),
+  ('data', 'Data access', 'bi-database'),
+  ('admin', 'Administration', 'bi-shield-lock'),
+] %}
+{% set category_style = {
+  'auth': 'bg-primary-subtle text-primary-emphasis',
+  'prediction': 'bg-info-subtle text-info-emphasis',
+  'data': 'bg-secondary-subtle text-secondary-emphasis',
+  'admin': 'bg-warning-subtle text-warning-emphasis',
+} %}
+
+<div class="page-header">
+  <div>
+    <h1>Audit Trail</h1>
+    <p>
+      {{ pagination.total }} event(s){% if category %} in <strong>{{ category }}</strong>{% endif %}.
+      Actor emails are snapshotted, so entries survive account deletion.
+    </p>
+  </div>
+  <a href="{{ url_for('admin') }}" class="btn btn-outline-custom">
+    <i class="bi bi-arrow-left"></i> Admin Panel
+  </a>
+</div>
+
+<div class="glass-card p-3 mb-4">
+  <div class="d-flex gap-2 flex-wrap">
+    {% for value, label, icon in categories %}
+    <a href="{{ url_for('admin_audit', category=value) }}"
+       class="btn btn-sm {{ 'btn-primary-custom' if category == value else 'btn-outline-custom' }}">
+      <i class="bi {{ icon }}"></i> {{ label }}
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="glass-card p-4">
+  {% if pagination.items %}
+  <div class="table-responsive">
+    <table class="table table-custom align-middle mb-0">
+      <thead>
+        <tr>
+          <th style="width: 60px;">ID</th>
+          <th style="width: 170px;">Timestamp</th>
+          <th>Actor</th>
+          <th style="width: 130px;">Category</th>
+          <th>Action</th>
+          <th style="width: 130px;">IP Address</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in pagination.items %}
+        <tr>
+          <td class="text-muted small">{{ log.id }}</td>
+          <td class="text-muted small text-nowrap">{{ log.timestamp | humandate('%d %b %Y, %H:%M:%S') }}</td>
+          <td>
+            {% if log.user %}
+              <div class="fw-semibold">{{ log.user.full_name }}</div>
+              <div class="text-muted small">{{ log.user.email }}</div>
+            {% elif log.actor_email %}
+              <div class="fw-semibold text-muted">{{ log.actor_email }}</div>
+              <div class="text-muted small"><em>account removed</em></div>
+            {% else %}
+              <span class="text-muted">System</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge {{ category_style.get(log.category, 'bg-secondary-subtle text-secondary-emphasis') }}">
+              {{ log.category }}
+            </span>
+          </td>
+          <td>{{ log.action }}</td>
+          <td class="text-muted small font-monospace">{{ log.ip_address or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if pagination.pages > 1 %}
+  <nav aria-label="Audit log pages">
+    <ul class="pagination justify-content-center mt-4 mb-0">
+      <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
+        <a class="page-link" href="{{ url_for('admin_audit', page=pagination.prev_num, category=category) }}">&laquo;</a>
+      </li>
+      {% for p in pagination.iter_pages(left_edge=1, left_current=2, right_current=3, right_edge=1) %}
+        {% if p %}
+        <li class="page-item {{ 'active' if p == pagination.page }}">
+          <a class="page-link" href="{{ url_for('admin_audit', page=p, category=category) }}">{{ p }}</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+        {% endif %}
+      {% endfor %}
+      <li class="page-item {{ 'disabled' if not pagination.has_next }}">
+        <a class="page-link" href="{{ url_for('admin_audit', page=pagination.next_num, category=category) }}">&raquo;</a>
+      </li>
+    </ul>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div class="empty-state">
+    <i class="bi bi-journal-x"></i>
+    <h5>No events recorded</h5>
+    {% if category %}
+    <p class="mb-3">Nothing has been logged in the <strong>{{ category }}</strong> category yet.</p>
+    <a href="{{ url_for('admin_audit') }}" class="btn btn-outline-custom">Show all activity</a>
+    {% else %}
+    <p class="mb-0">Logins, predictions, exports and admin actions will appear here.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

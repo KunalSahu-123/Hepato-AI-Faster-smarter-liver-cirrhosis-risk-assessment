@@ -1,0 +1,460 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "history" %}
+{% block title %}{{ record.patient_name }} - Assessment Detail | Hepato AI{% endblock %}
+{% block dashboard_content %}
+
+{% set inputs = record.clinical_inputs() %}
+{% set choice_text = {
+  'M': 'Male', 'F': 'Female',
+  'Y': 'Present', 'N': 'Absent', 'S': 'Slight'
+} %}
+
+<div class="page-header">
+  <div>
+    <h1>{{ record.patient_name }}</h1>
+    <p>
+      {% if record.patient_id %}<strong>{{ record.patient_id }}</strong> &middot; {% endif %}
+      Assessed {{ record.created_at | humandate }} &middot;
+      <span class="text-capitalize">{{ record.source }}</span> entry
+      {% if current_user.is_admin and record.user_id != current_user.id %}
+        &middot; <span class="badge bg-warning-subtle text-warning-emphasis">viewing as admin</span>
+      {% endif %}
+    </p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('history') }}" class="btn btn-outline-custom">
+      <i class="bi bi-arrow-left"></i> Back to History
+    </a>
+    {% if current_user.is_admin %}
+    <a href="{{ url_for('compare') }}?ids={{ record.id }}" class="btn btn-outline-custom">
+      <i class="bi bi-columns-gap"></i> Compare
+    </a>
+    {% endif %}
+    <a href="{{ url_for('export_pdf', prediction_id=record.id) }}" class="btn btn-primary-custom">
+      <i class="bi bi-file-earmark-pdf"></i> Download PDF
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-4">
+    <div class="result-card {{ 'high-risk' if record.result == 'High Risk' else 'low-risk' }}">
+      <i class="bi {{ 'bi-exclamation-triangle-fill' if record.result == 'High Risk' else 'bi-check-circle-fill' }} fs-1"></i>
+      <h3 class="fw-bold mt-2">{{ record.result }}</h3>
+      <div class="confidence-ring my-2">{{ record.probability_pct }}%</div>
+      <p class="mb-0">Confidence Score</p>
+      <hr class="border-light">
+      <p class="mb-0">Risk Band: <strong>{{ record.risk_level }}</strong></p>
+      <p class="mb-0 small opacity-75">{{ record.model_name }}</p>
+    </div>
+
+    {% if scores %}
+    <div class="glass-card p-4 mt-3">
+      <h6 class="fw-bold mb-1">Established Clinical Scores</h6>
+      <p class="text-muted small mb-3">
+        Recomputed from the stored values with published formulas &mdash; independent of the model.
+      </p>
+      <div class="score-grid">
+        {% for key in ['meld', 'fib4', 'apri', 'child_pugh'] %}
+          {% set s = scores[key] %}
+          <div class="score-tile">
+            <div class="score-name">{{ s.label }}</div>
+            <div class="score-value">{{ s.value if s.value is not none else 'N/A' }}</div>
+            <div class="score-band text-primary">{{ s.band }}</div>
+            <div class="score-meaning">{{ s.meaning }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="glass-card p-4 mt-3">
+      <h6 class="fw-bold mb-3">Record Metadata</h6>
+      <table class="panel-table">
+        <tbody>
+          <tr><td class="text-muted">Record ID</td><td class="fw-semibold">#{{ record.id }}</td></tr>
+          <tr><td class="text-muted">Entry method</td><td class="fw-semibold text-capitalize">{{ record.source }}</td></tr>
+          <tr><td class="text-muted">Model</td><td class="fw-semibold">{{ record.model_name }}</td></tr>
+          <tr><td class="text-muted">Raw probability</td><td class="fw-semibold">{{ record.probability | round(6) }}</td></tr>
+          <tr><td class="text-muted">Created</td><td class="fw-semibold">{{ record.created_at | humandate('%d %b %Y, %H:%M') }}</td></tr>
+          {% if current_user.is_admin and record.user %}
+          <tr><td class="text-muted">Clinician</td><td class="fw-semibold">{{ record.user.email }}</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="glass-card p-4">
+      <div class="section-title"><i class="bi bi-clipboard-data"></i> Recorded Clinical Inputs</div>
+      <div class="row g-0">
+        {% for field, meta in field_meta.items() %}
+          {% set value = inputs.get(field) %}
+          <div class="col-sm-6 col-xl-4">
+            <div class="px-2 py-2">
+              <div class="text-muted small">{{ meta.label }}{% if meta.unit and meta.type == 'number' %} <span class="text-muted">({{ meta.unit }})</span>{% endif %}</div>
+              <div class="fw-semibold">
+                {% if value is none %}
+                  <span class="text-muted">Not recorded</span>
+                {% elif meta.type == 'choice' %}
+                  {% if field == 'stage' %}Stage {{ value | int }}
+                  {% else %}{{ choice_text.get(value, value) }}{% endif %}
+                {% else %}
+                  {{ value }}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if abnormal %}
+    <div class="glass-card p-4 mt-4">
+      <div class="section-title"><i class="bi bi-activity"></i> Values Outside Reference Range</div>
+      <p class="text-muted small mb-3">
+        {{ abnormal | length }} of the recorded markers fall outside adult reference limits.
+      </p>
+      <table class="panel-table">
+        <thead>
+          <tr><th>Parameter</th><th>Value</th><th>Reference</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          {% for field, flag in abnormal.items() %}
+          <tr>
+            <td>{{ flag.label }}</td>
+            <td class="fw-semibold">{{ flag.value }} <span class="text-muted small">{{ flag.unit }}</span></td>
+            <td class="text-muted small">{{ flag.range[0] }} &ndash; {{ flag.range[1] }}</td>
+            <td><span class="status-pill status-{{ flag.status }}">{{ flag.status | upper }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    {% if explanation %}
+    <div class="glass-card p-4 mt-4">
+      <div class="section-title"><i class="bi bi-diagram-3"></i> What Drove This Prediction</div>
+      <p class="text-muted small mb-3">
+        Each value was re-scored against a typical patient's to measure how much it moved this
+        patient's risk. Red pushed risk up; green pulled it down.
+      </p>
+      {% set max_impact = explanation | map(attribute='impact') | map('abs') | max %}
+      {% for item in explanation %}
+        {% set width = (item.impact | abs / max_impact * 48) if max_impact else 0 %}
+        <div class="driver-row">
+          <div>
+            <div class="driver-label">{{ item.label }}</div>
+            <div class="driver-sub">
+              {{ item.patient_value }} {{ item.unit }} vs typical {{ item.typical_value }}
+            </div>
+          </div>
+          <div class="driver-track">
+            <div class="driver-fill {{ 'up' if item.impact > 0 else 'down' }}"
+                 style="width: {{ width | round(1) }}%"></div>
+          </div>
+          <div class="driver-value {{ 'up' if item.impact > 0 else 'down' }}">
+            {{ '%+.1f'|format(item.impact_pct) }}%
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="glass-card p-4 mt-4">
+      <div class="section-title"><i class="bi bi-diagram-3"></i> Prediction Drivers</div>
+      <p class="text-muted small mb-0">
+        No per-feature breakdown was stored for this record. Batch-uploaded rows skip the
+        occlusion analysis to keep large files fast &mdash; re-run this patient through the
+        single-patient form to generate one.
+      </p>
+    </div>
+    {% endif %}
+
+    <div class="glass-card p-4 mt-4">
+      <div class="section-title"><i class="bi bi-journal-text"></i> Clinician Notes</div>
+      <form method="POST" action="{{ url_for('save_notes', prediction_id=record.id) }}"
+            data-show-loading="false">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="visually-hidden" for="notes-field">Clinician notes</label>
+        <textarea id="notes-field" name="notes" rows="5" maxlength="5000"
+                  class="form-control form-control-custom"
+                  placeholder="Observations, plan, follow-up interval...">{{ record.doctor_notes or '' }}</textarea>
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <span class="text-muted small">Notes are included in the PDF report.</span>
+          <button type="submit" class="btn btn-primary-custom">
+            <i class="bi bi-save"></i> Save Notes
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <div class="glass-card p-4 mt-4">
+      <div class="section-title"><i class="bi bi-list-check"></i> Suggested Next Steps</div>
+      {% if record.result == "High Risk" %}
+      <ul class="text-muted small mb-0">
+        <li>Refer to hepatology/gastroenterology for confirmatory assessment.</li>
+        <li>Consider abdominal ultrasound with Doppler and transient elastography (FibroScan).</li>
+        <li>Review the medication list for hepatotoxic agents.</li>
+        <li>Monitor bilirubin, albumin, platelet count and prothrombin time trends.</li>
+        <li>Screen for varices and hepatocellular carcinoma per local guidelines.</li>
+      </ul>
+      {% else %}
+      <ul class="text-muted small mb-0">
+        <li>Continue routine liver panel monitoring at the usual interval.</li>
+        <li>Reassess promptly if jaundice, ascites, oedema or encephalopathy develop.</li>
+        <li>Address modifiable risk factors: alcohol intake, metabolic syndrome, weight.</li>
+        <li>Ensure hepatitis A/B vaccination status is current.</li>
+      </ul>
+      {% endif %}
+    </div>
+
+    {% if recommendations %}
+    <div class="glass-card glow-hover p-4 mt-3">
+      <div class="d-flex align-items-center gap-2 mb-2">
+        {% if recommendations.urgency == 'immediate' %}
+        <span class="badge bg-danger"><i class="bi bi-exclamation-triangle-fill"></i> Urgent</span>
+        {% elif recommendations.urgency == 'soon' %}
+        <span class="badge bg-warning text-dark"><i class="bi bi-clock-fill"></i> Consult Soon</span>
+        {% else %}
+        <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Routine</span>
+        {% endif %}
+        <h6 class="fw-bold mb-0">Recommended Actions</h6>
+      </div>
+      <p class="text-muted small mb-3">{{ recommendations.message }}</p>
+      <ol class="small mb-0">
+        {% for action in recommendations.actions %}
+        <li class="mb-1">{{ action }}</li>
+        {% endfor %}
+      </ol>
+    </div>
+
+    <div class="glass-card glow-hover p-4 mt-3" id="specialists-section">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+        <h6 class="fw-bold mb-0"><i class="bi bi-hospital text-primary"></i> Recommended Specialists & Hospitals</h6>
+        <div class="d-flex align-items-center gap-2">
+          <span id="loc-status" class="badge bg-secondary small" style="font-size:0.68rem">
+            <i class="bi bi-geo-alt"></i> Detecting location...
+          </span>
+          <button type="button" class="btn btn-sm btn-outline-custom" id="btn-use-gps"
+                  title="Use precise GPS location for sorting">
+            <i class="bi bi-crosshair"></i> Use GPS
+          </button>
+        </div>
+      </div>
+      <p class="text-muted small mb-3">
+        Top-rated hepatologists, liver transplant surgeons, and leading hospitals across India.
+        Sorted by proximity to your location.
+      </p>
+      <div id="specialists-list">
+      {% for doc in recommendations.specialists %}
+      <div class="doctor-card p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div class="flex-grow-1">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <span class="fw-bold">{{ doc.name }}</span>
+              <span class="badge bg-warning text-dark" style="font-size:0.7rem">
+                <i class="bi bi-star-fill"></i> {{ doc.rating }}
+              </span>
+              {% if doc.experience %}
+              <span class="badge bg-light text-muted" style="font-size:0.68rem">{{ doc.experience }}</span>
+              {% endif %}
+            </div>
+            <div class="text-primary small fw-semibold">{{ doc.specialisation }}</div>
+            <div class="small mt-2">
+              <i class="bi bi-building text-muted"></i> {{ doc.hospital }}
+            </div>
+            <div class="small">
+              <i class="bi bi-geo-alt text-muted"></i> {{ doc.city }}
+              {% if doc.address %}<span class="text-muted"> &mdash; {{ doc.address }}</span>{% endif %}
+            </div>
+            <div class="d-flex flex-wrap gap-3 mt-2">
+              <div class="small">
+                <i class="bi bi-telephone-fill text-success"></i>
+                <a href="tel:{{ doc.phone }}" class="text-decoration-none fw-semibold">{{ doc.phone }}</a>
+              </div>
+              {% if doc.email %}
+              <div class="small">
+                <i class="bi bi-envelope-fill text-primary"></i>
+                <a href="mailto:{{ doc.email }}" class="text-decoration-none">{{ doc.email }}</a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="text-end d-flex flex-column gap-1" style="min-width:100px">
+            <a href="{{ doc.website }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-custom">
+              <i class="bi bi-globe2"></i> Website
+            </a>
+            {% if doc.maps %}
+            <a href="{{ doc.maps }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-custom">
+              <i class="bi bi-map"></i> Directions
+            </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="disclaimer-box mt-4">
+      <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+      This is an AI-generated estimate for decision support, not a medical diagnosis. Interpret
+      alongside full clinical history, imaging and confirmatory testing.
+    </div>
+
+    <div class="text-end mt-4">
+      <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal"
+              data-bs-target="#deleteRecordModal">
+        <i class="bi bi-trash"></i> Delete This Record
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="deleteRecordModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('delete_prediction', prediction_id=record.id) }}"
+            data-show-loading="false">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Delete Record</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-0">
+            Permanently delete the assessment for <strong>{{ record.patient_name }}</strong>?
+            This cannot be undone.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-custom" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">Delete Permanently</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if recommendations %}
+<script>
+(function () {
+  var API_URL = "{{ url_for('api_recommendations', prediction_id=record.id) }}";
+  var locStatus = document.getElementById("loc-status");
+  var btnGps = document.getElementById("btn-use-gps");
+  var listEl = document.getElementById("specialists-list");
+
+  function escapeHtml(text) {
+    var d = document.createElement("div");
+    d.textContent = text;
+    return d.innerHTML;
+  }
+
+  function renderSpecialists(specialists, locationLabel) {
+    if (locationLabel) {
+      locStatus.className = "badge bg-success small";
+      locStatus.style.fontSize = "0.68rem";
+      locStatus.innerHTML = '<i class="bi bi-geo-alt-fill"></i> ' + escapeHtml(locationLabel);
+    }
+    var html = "";
+    specialists.forEach(function (doc) {
+      var distBadge = "";
+      if (doc.distance_km !== undefined) {
+        distBadge = '<span class="badge bg-info text-dark ms-2" style="font-size:0.68rem">' +
+          '<i class="bi bi-signpost-2"></i> ~' + doc.distance_km + ' km</span>';
+      }
+      html += '<div class="doctor-card p-3 mb-3">' +
+        '<div class="d-flex justify-content-between align-items-start flex-wrap gap-2">' +
+        '<div class="flex-grow-1">' +
+        '<div class="d-flex align-items-center gap-2 flex-wrap mb-1">' +
+        '<span class="fw-bold">' + escapeHtml(doc.name) + '</span>' +
+        '<span class="badge bg-warning text-dark" style="font-size:0.7rem">' +
+        '<i class="bi bi-star-fill"></i> ' + doc.rating + '</span>' +
+        (doc.experience ? '<span class="badge bg-light text-muted" style="font-size:0.68rem">' + escapeHtml(doc.experience) + '</span>' : '') +
+        distBadge +
+        '</div>' +
+        '<div class="text-primary small fw-semibold">' + escapeHtml(doc.specialisation) + '</div>' +
+        '<div class="small mt-2"><i class="bi bi-building text-muted"></i> ' + escapeHtml(doc.hospital) + '</div>' +
+        '<div class="small"><i class="bi bi-geo-alt text-muted"></i> ' + escapeHtml(doc.city) +
+        (doc.address ? ' <span class="text-muted">&mdash; ' + escapeHtml(doc.address) + '</span>' : '') + '</div>' +
+        '<div class="d-flex flex-wrap gap-3 mt-2">' +
+        '<div class="small"><i class="bi bi-telephone-fill text-success"></i> ' +
+        '<a href="tel:' + escapeHtml(doc.phone) + '" class="text-decoration-none fw-semibold">' + escapeHtml(doc.phone) + '</a></div>' +
+        (doc.email ? '<div class="small"><i class="bi bi-envelope-fill text-primary"></i> ' +
+        '<a href="mailto:' + escapeHtml(doc.email) + '" class="text-decoration-none">' + escapeHtml(doc.email) + '</a></div>' : '') +
+        '</div></div>' +
+        '<div class="text-end d-flex flex-column gap-1" style="min-width:100px">' +
+        '<a href="' + escapeHtml(doc.website) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-custom">' +
+        '<i class="bi bi-globe2"></i> Website</a>' +
+        (doc.maps ? '<a href="' + escapeHtml(doc.maps) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-custom">' +
+        '<i class="bi bi-map"></i> Directions</a>' : '') +
+        '</div></div></div>';
+    });
+    listEl.innerHTML = html;
+  }
+
+  function fetchSorted(lat, lng, label) {
+    fetch(API_URL + "?lat=" + lat + "&lng=" + lng, {
+      credentials: "same-origin",
+      headers: { "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').getAttribute("content") }
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      renderSpecialists(data.specialists, label);
+    })
+    .catch(function () {
+      locStatus.className = "badge bg-secondary small";
+      locStatus.style.fontSize = "0.68rem";
+      locStatus.innerHTML = '<i class="bi bi-geo-alt"></i> Sorted by rating';
+    });
+  }
+
+  // 1. Default: detect location via IP
+  fetch("https://ipapi.co/json/", { mode: "cors" })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.latitude && data.longitude) {
+        var label = (data.city || "") + (data.region ? ", " + data.region : "");
+        fetchSorted(data.latitude, data.longitude, label || "IP location");
+      } else {
+        locStatus.innerHTML = '<i class="bi bi-geo-alt"></i> Sorted by rating';
+      }
+    })
+    .catch(function () {
+      locStatus.className = "badge bg-secondary small";
+      locStatus.style.fontSize = "0.68rem";
+      locStatus.innerHTML = '<i class="bi bi-geo-alt"></i> Sorted by rating';
+    });
+
+  // 2. GPS button: precise browser geolocation
+  btnGps.addEventListener("click", function () {
+    if (!navigator.geolocation) {
+      locStatus.innerHTML = '<i class="bi bi-geo-alt"></i> GPS not available';
+      return;
+    }
+    locStatus.className = "badge bg-info text-dark small";
+    locStatus.style.fontSize = "0.68rem";
+    locStatus.innerHTML = '<i class="bi bi-hourglass-split"></i> Getting GPS...';
+    btnGps.disabled = true;
+
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        fetchSorted(pos.coords.latitude, pos.coords.longitude, "GPS location");
+        btnGps.innerHTML = '<i class="bi bi-check-lg"></i> GPS active';
+      },
+      function () {
+        locStatus.className = "badge bg-warning text-dark small";
+        locStatus.style.fontSize = "0.68rem";
+        locStatus.innerHTML = '<i class="bi bi-geo-alt"></i> GPS denied';
+        btnGps.disabled = false;
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

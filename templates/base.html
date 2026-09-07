@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Hepato AI — machine-learning decision support for liver cirrhosis risk assessment.">
+{# Exposed so fetch()-based calls can send a CSRF token like normal form posts do. #}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>{% block title %}Liver Cirrhosis Prediction System{% endblock %}</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<div id="scroll-progress" class="scroll-progress" aria-hidden="true"></div>
+
+<a href="#main-content" class="skip-link">Skip to main content</a>
+
+<nav class="navbar navbar-expand-lg navbar-glass py-3">
+  <div class="container">
+    <a class="navbar-brand navbar-brand-custom" href="{{ url_for('index') }}">
+      <svg class="brand-liver-icon" width="28" height="28" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M155,65 C200,55 260,80 270,130 C280,180 265,230 230,250 C200,265 170,260 150,250 C130,240 120,220 125,195 C130,170 145,150 150,130 C155,110 150,85 155,65 Z" fill="currentColor"/>
+        <path d="M150,130 C145,150 130,170 105,175 C80,180 55,165 42,145 C30,125 35,100 50,85 C65,70 90,65 115,70 C140,75 150,100 150,130 Z" fill="currentColor"/>
+      </svg> Hepato AI
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain"
+            aria-controls="navMain" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navMain">
+      <ul class="navbar-nav mx-auto">
+        <li class="nav-item"><a class="nav-link nav-link-custom" href="{{ url_for('index') }}">Home</a></li>
+        <li class="nav-item"><a class="nav-link nav-link-custom" href="{{ url_for('about') }}">About</a></li>
+        <li class="nav-item"><a class="nav-link nav-link-custom" href="{{ url_for('services') }}">Services</a></li>
+        {% if current_user.is_authenticated %}
+        <li class="nav-item"><a class="nav-link nav-link-custom" href="{{ url_for('dashboard') }}">Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link nav-link-custom" href="{{ url_for('prediction') }}">Prediction</a></li>
+        {% endif %}
+        <li class="nav-item"><a class="nav-link nav-link-custom" href="{{ url_for('contact') }}">Contact</a></li>
+      </ul>
+      <div class="d-flex align-items-center gap-2">
+        <button class="theme-toggle-btn" type="button" onclick="toggleTheme()"
+                title="Toggle dark/light mode" aria-label="Toggle dark or light mode">
+          <i class="bi bi-moon-stars-fill" id="theme-icon" aria-hidden="true"></i>
+        </button>
+        {% if current_user.is_authenticated %}
+          <div class="dropdown">
+            <button class="btn btn-outline-custom dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="bi bi-person-circle"></i> {{ current_user.full_name.split(' ')[0] }}
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="{{ url_for('profile') }}"><i class="bi bi-person"></i> Profile</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('history') }}"><i class="bi bi-clock-history"></i> History</a></li>
+              {% if current_user.is_admin %}
+              <li><a class="dropdown-item" href="{{ url_for('batch_predict') }}"><i class="bi bi-upload"></i> Batch Upload</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('admin') }}"><i class="bi bi-shield-lock"></i> Admin Panel</a></li>
+              {% endif %}
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right"></i> Logout</a></li>
+            </ul>
+          </div>
+        {% else %}
+          <a href="{{ url_for('login') }}" class="btn btn-outline-custom">Login</a>
+          <a href="{{ url_for('register') }}" class="btn btn-primary-custom">Sign Up</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- Flash messages as toasts -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index:3000; margin-top:80px;" id="toast-container"
+     aria-live="polite" aria-atomic="true">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="toast auto-toast align-items-center text-bg-{{ 'primary' if category=='info' else category }} border-0" role="alert">
+          <div class="d-flex">
+            <div class="toast-body">{{ message }}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+          </div>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+</div>
+
+<div id="loading-overlay" class="loading-overlay" aria-hidden="true">
+  <div class="text-center text-white">
+    <div class="pulse-loader mx-auto mb-3"></div>
+    <p id="loading-message">Analyzing patient data...</p>
+  </div>
+</div>
+
+<main id="main-content">
+{% block content %}{% endblock %}
+</main>
+
+<footer class="footer-custom">
+  <div class="container">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center">
+      <div class="mb-2 mb-md-0">
+        <strong><svg width="18" height="18" viewBox="0 0 300 300" style="vertical-align:-2px" aria-hidden="true"><path d="M155,65 C200,55 260,80 270,130 C280,180 265,230 230,250 C200,265 170,260 150,250 C130,240 120,220 125,195 C130,170 145,150 150,130 C155,110 150,85 155,65 Z" fill="var(--primary)"/><path d="M150,130 C145,150 130,170 105,175 C80,180 55,165 42,145 C30,125 35,100 50,85 C65,70 90,65 115,70 C140,75 150,100 150,130 Z" fill="var(--primary)"/></svg> Hepato AI</strong>
+        <span class="text-muted"> &mdash; AI-powered liver cirrhosis decision-support</span>
+      </div>
+      <div class="text-muted small text-center text-md-end">
+        &copy; {{ current_year }} Hepato AI Project. Final Year B.Tech Major Project.
+        <br class="d-none d-md-inline">
+        Educational use only &mdash; not a medical diagnosis.
+        <br>
+        <span style="font-size:0.7rem;opacity:0.6;">saxenashvam0321@gmail.com</span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- Health Assistant AI Chat Widget -->
+<div id="health-chat-widget">
+  <button id="chat-fab" class="chat-fab" type="button" aria-label="Open Health Assistant AI" title="Health Assistant AI">
+    <svg class="chat-fab-icon" width="44" height="44" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="24" r="13" fill="#fff"/><rect x="25" y="9" width="14" height="7" rx="1.5" fill="#fff"/><rect x="29" y="6" width="6" height="5" rx="1" fill="#dbeafe"/><line x1="32" y1="7" x2="32" y2="10" stroke="#dc2626" stroke-width="2"/><line x1="30.5" y1="8.5" x2="33.5" y2="8.5" stroke="#dc2626" stroke-width="2"/><circle cx="27.5" cy="24" r="2" fill="#1e40af"/><circle cx="36.5" cy="24" r="2" fill="#1e40af"/><path d="M28.5 29 Q32 32.5 35.5 29" stroke="#1e40af" stroke-width="1.5" fill="none"/><path d="M18 56 C18 40 46 40 46 56" fill="#fff"/><rect x="28" y="41" width="8" height="4" rx="1" fill="#dbeafe"/><line x1="32" y1="41.5" x2="32" y2="44.5" stroke="#dc2626" stroke-width="1.5"/><line x1="30.5" y1="43" x2="33.5" y2="43" stroke="#dc2626" stroke-width="1.5"/></svg>
+    <i class="bi bi-x-lg chat-fab-close" style="display:none"></i>
+  </button>
+  <div id="chat-panel" class="chat-panel" style="display:none">
+    <div class="chat-header">
+      <div class="d-flex align-items-center gap-2">
+        <div class="chat-header-avatar">
+          <svg width="24" height="24" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="26" r="12" fill="#fff"/><rect x="26" y="12" width="12" height="6" rx="1" fill="#fff"/><rect x="30" y="10" width="4" height="4" rx="0.5" fill="#e0f0ff"/><line x1="32" y1="11" x2="32" y2="13" stroke="#2563eb" stroke-width="1.5"/><line x1="31" y1="12" x2="33" y2="12" stroke="#2563eb" stroke-width="1.5"/><circle cx="28" cy="26" r="1.5" fill="#2563eb"/><circle cx="36" cy="26" r="1.5" fill="#2563eb"/><path d="M29 30 Q32 33 35 30" stroke="#2563eb" stroke-width="1.2" fill="none"/><path d="M20 54 C20 40 44 40 44 54" fill="#fff"/><rect x="29" y="42" width="6" height="3" rx="1" fill="#e0f0ff"/><line x1="32" y1="42.5" x2="32" y2="44.5" stroke="#2563eb" stroke-width="1"/><line x1="31" y1="43.5" x2="33" y2="43.5" stroke="#2563eb" stroke-width="1"/></svg>
+        </div>
+        <div>
+          <div class="chat-header-title">Health Assistant AI</div>
+          <div class="chat-header-status"><span class="chat-status-dot"></span> Online</div>
+        </div>
+      </div>
+      <button id="chat-close-btn" class="chat-close-btn" type="button" aria-label="Close chat">
+        <i class="bi bi-dash-lg"></i>
+      </button>
+    </div>
+    <div id="chat-messages" class="chat-messages">
+      <div class="chat-msg chat-msg-bot">
+        <div class="chat-msg-avatar"><svg class="nurse-avatar-sm" viewBox="0 0 64 64"><circle cx="32" cy="26" r="12" fill="#2563eb"/><rect x="26" y="12" width="12" height="6" rx="1" fill="#2563eb"/><rect x="30" y="10" width="4" height="4" rx="0.5" fill="#dbeafe"/><line x1="32" y1="11" x2="32" y2="13" stroke="#fff" stroke-width="1.5"/><line x1="31" y1="12" x2="33" y2="12" stroke="#fff" stroke-width="1.5"/><circle cx="28" cy="26" r="1.5" fill="#fff"/><circle cx="36" cy="26" r="1.5" fill="#fff"/><path d="M29 30 Q32 33 35 30" stroke="#fff" stroke-width="1.2" fill="none"/><path d="M20 54 C20 40 44 40 44 54" fill="#2563eb"/><rect x="29" y="42" width="6" height="3" rx="1" fill="#dbeafe"/><line x1="32" y1="42.5" x2="32" y2="44.5" stroke="#fff" stroke-width="1"/><line x1="31" y1="43.5" x2="33" y2="43.5" stroke="#fff" stroke-width="1"/></svg></div>
+        <div class="chat-msg-bubble">Hello! I'm your <strong>Health Assistant AI</strong>. Ask me about liver health, cirrhosis symptoms, diagnostic tests, diet tips, treatment options, or even <strong>your prediction report</strong>!</div>
+      </div>
+    </div>
+    <form id="chat-form" class="chat-input-area" autocomplete="off">
+      <input type="text" id="chat-input" class="chat-input" placeholder="Type your health question..." maxlength="500" required>
+      <button type="submit" class="chat-send-btn" aria-label="Send message">
+        <i class="bi bi-send-fill"></i>
+      </button>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script>
+(function(){
+  const fab = document.getElementById("chat-fab");
+  const panel = document.getElementById("chat-panel");
+  const closeBtn = document.getElementById("chat-close-btn");
+  const form = document.getElementById("chat-form");
+  const input = document.getElementById("chat-input");
+  const messages = document.getElementById("chat-messages");
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || "";
+  const botAvatar = '<svg class="nurse-avatar-sm" viewBox="0 0 64 64"><circle cx="32" cy="26" r="12" fill="#2563eb"/><rect x="26" y="12" width="12" height="6" rx="1" fill="#2563eb"/><rect x="30" y="10" width="4" height="4" rx="0.5" fill="#dbeafe"/><line x1="32" y1="11" x2="32" y2="13" stroke="#fff" stroke-width="1.5"/><line x1="31" y1="12" x2="33" y2="12" stroke="#fff" stroke-width="1.5"/><circle cx="28" cy="26" r="1.5" fill="#fff"/><circle cx="36" cy="26" r="1.5" fill="#fff"/><path d="M29 30 Q32 33 35 30" stroke="#fff" stroke-width="1.2" fill="none"/><path d="M20 54 C20 40 44 40 44 54" fill="#2563eb"/><rect x="29" y="42" width="6" height="3" rx="1" fill="#dbeafe"/><line x1="32" y1="42.5" x2="32" y2="44.5" stroke="#fff" stroke-width="1"/><line x1="31" y1="43.5" x2="33" y2="43.5" stroke="#fff" stroke-width="1"/></svg>';
+  const chatHistory = [];
+
+  function toggleChat(){
+    const open = panel.style.display === "none" || !panel.style.display;
+    panel.style.display = open ? "flex" : "none";
+    fab.classList.toggle("active", open);
+    if(open) input.focus();
+  }
+  fab.addEventListener("click", toggleChat);
+  closeBtn.addEventListener("click", toggleChat);
+
+  function formatReply(text){
+    let s = text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    const lines = s.split("\n");
+    let html = "", inList = false;
+    for(const line of lines){
+      const trimmed = line.trim();
+      const bulletMatch = trimmed.match(/^[-•]\s+(.+)$/);
+      const numMatch = trimmed.match(/^\d+\.\s+(.+)$/);
+      if(bulletMatch || numMatch){
+        if(!inList){ html += "<ul>"; inList = true; }
+        html += "<li>" + (bulletMatch ? bulletMatch[1] : numMatch[1]) + "</li>";
+      } else {
+        if(inList){ html += "</ul>"; inList = false; }
+        if(trimmed) html += trimmed + "<br>";
+      }
+    }
+    if(inList) html += "</ul>";
+    if(html.endsWith("<br>")) html = html.slice(0, -4);
+    return html;
+  }
+
+  function addMsg(text, isUser, isAI){
+    const wrapper = document.createElement("div");
+    wrapper.className = "chat-msg " + (isUser ? "chat-msg-user" : "chat-msg-bot");
+    const avatar = document.createElement("div");
+    avatar.className = "chat-msg-avatar";
+    avatar.innerHTML = isUser ? '<i class="bi bi-person-fill"></i>' : botAvatar;
+    const bubble = document.createElement("div");
+    bubble.className = "chat-msg-bubble";
+    if(isUser){
+      bubble.textContent = text;
+    } else {
+      bubble.innerHTML = formatReply(text);
+      if(isAI){
+        const badge = document.createElement("div");
+        badge.className = "chat-ai-badge";
+        badge.innerHTML = '<i class="bi bi-stars"></i> AI Powered';
+        bubble.appendChild(badge);
+      }
+    }
+    wrapper.appendChild(avatar);
+    wrapper.appendChild(bubble);
+    messages.appendChild(wrapper);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function showTyping(){
+    const el = document.createElement("div");
+    el.className = "chat-msg chat-msg-bot";
+    el.id = "chat-typing";
+    el.innerHTML = '<div class="chat-msg-avatar">'+botAvatar+'</div><div class="chat-msg-bubble"><div class="chat-typing"><span></span><span></span><span></span></div></div>';
+    messages.appendChild(el);
+    messages.scrollTop = messages.scrollHeight;
+  }
+  function hideTyping(){
+    const el = document.getElementById("chat-typing");
+    if(el) el.remove();
+  }
+
+  form.addEventListener("submit", async function(e){
+    e.preventDefault();
+    const msg = input.value.trim();
+    if(!msg) return;
+    addMsg(msg, true);
+    chatHistory.push({role:"user", text:msg});
+    input.value = "";
+    showTyping();
+    try {
+      const res = await fetch("/api/health-chat", {
+        method: "POST",
+        headers: {"Content-Type":"application/json", "X-CSRFToken": csrfToken},
+        body: JSON.stringify({message: msg, history: chatHistory.slice(-6)})
+      });
+      const data = await res.json();
+      hideTyping();
+      const reply = data.reply || data.error || "Sorry, something went wrong.";
+      addMsg(reply, false, data.ai_powered);
+      chatHistory.push({role:"model", text:reply});
+    } catch(err) {
+      hideTyping();
+      addMsg("Unable to reach the server. Please try again.", false);
+    }
+  });
+})();
+</script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

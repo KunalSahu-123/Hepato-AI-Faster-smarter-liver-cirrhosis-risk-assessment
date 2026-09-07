@@ -1,0 +1,272 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "compare" %}
+{% block title %}Compare Assessments - Hepato AI{% endblock %}
+{% block dashboard_content %}
+
+{% set choice_text = {'M': 'Male', 'F': 'Female', 'Y': 'Present', 'N': 'Absent', 'S': 'Slight'} %}
+
+<div class="page-header">
+  <div>
+    <h1>Compare Assessments</h1>
+    <p>
+      Put up to four records side by side &mdash; track one patient across visits, or contrast
+      different patients.
+    </p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('history') }}" class="btn btn-outline-custom">
+      <i class="bi bi-clock-history"></i> History
+    </a>
+  </div>
+</div>
+
+{% if not available %}
+<div class="glass-card p-4">
+  <div class="empty-state">
+    <i class="bi bi-columns-gap"></i>
+    <h5>Nothing to compare yet</h5>
+    <p class="mb-3">You need at least two saved assessments before a comparison is useful.</p>
+    <a href="{{ url_for('prediction') }}" class="btn btn-primary-custom">
+      <i class="bi bi-plus-lg"></i> New Prediction
+    </a>
+  </div>
+</div>
+{% else %}
+
+<div class="glass-card p-4 mb-4">
+  <h6 class="fw-bold mb-1">Choose Records</h6>
+  <p class="text-muted small mb-3">
+    Pick 2&ndash;4 from your most recent 60 assessments. Selecting a fifth is blocked, because a
+    wider table stops being readable.
+  </p>
+  <form method="GET" id="compare-picker" data-show-loading="false">
+    <div class="compare-picker">
+      {% for r in available %}
+      <label class="compare-option {{ 'selected' if r.id in selected_ids }}">
+        <input class="form-check-input me-2 compare-check" type="checkbox" name="ids" value="{{ r.id }}"
+               {{ 'checked' if r.id in selected_ids }}>
+        <span>
+          <span class="fw-semibold d-block">{{ r.patient_name }}</span>
+          <span class="text-muted small">
+            {{ r.created_at | humandate('%d %b %Y') }} &middot; {{ r.probability_pct }}%
+            &middot; {{ r.result }}
+          </span>
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    <div class="d-flex gap-2 mt-3 align-items-center">
+      <button class="btn btn-primary-custom" id="compare-go">
+        <i class="bi bi-columns-gap"></i> Compare Selected
+      </button>
+      {% if selected_ids %}
+      <a href="{{ url_for('compare') }}" class="btn btn-outline-custom">Clear</a>
+      {% endif %}
+      <span class="text-muted small ms-auto" id="compare-count" aria-live="polite"></span>
+    </div>
+  </form>
+</div>
+
+{% if records | length >= 1 %}
+<div class="glass-card p-4 mb-4">
+  <h5 class="fw-bold mb-3">Risk Score Comparison</h5>
+  <canvas id="compareChart" height="{{ 70 if records | length > 2 else 90 }}"></canvas>
+</div>
+
+<div class="glass-card p-4">
+  <h5 class="fw-bold mb-1">Side-by-Side Detail</h5>
+  <p class="text-muted small mb-3">
+    Values that differ from the left-most (oldest) record are highlighted, with the direction of
+    change.
+  </p>
+
+  <div class="table-responsive">
+    <table class="table compare-table align-middle mb-0">
+      <thead>
+        <tr>
+          <th style="min-width: 190px;">Parameter</th>
+          {% for r in records %}
+          <th>
+            <div class="fw-bold">{{ r.patient_name }}</div>
+            <div class="text-muted small fw-normal">{{ r.created_at | humandate('%d %b %Y, %H:%M') }}</div>
+            {% if not loop.first %}
+              {% set days = (r.created_at - records[0].created_at).days %}
+              <div class="text-muted small fw-normal">+{{ days }} day{{ '' if days == 1 else 's' }}</div>
+            {% endif %}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="compare-section"><td colspan="{{ records | length + 1 }}">Model Output</td></tr>
+        <tr>
+          <td class="text-muted">Result</td>
+          {% for r in records %}
+          <td><span class="badge {{ 'badge-risk-high' if r.result == 'High Risk' else 'badge-risk-low' }}">{{ r.result }}</span></td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="text-muted">Confidence</td>
+          {% for r in records %}
+          <td class="fw-bold">
+            {{ r.probability_pct }}%
+            {% if not loop.first %}
+              {% set delta = r.probability_pct - records[0].probability_pct %}
+              {% if delta | abs >= 0.1 %}
+              <span class="delta {{ 'up' if delta > 0 else 'down' }}">
+                <i class="bi {{ 'bi-arrow-up-short' if delta > 0 else 'bi-arrow-down-short' }}"></i>{{ '%.1f'|format(delta | abs) }}
+              </span>
+              {% endif %}
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="text-muted">Risk band</td>
+          {% for r in records %}<td>{{ r.risk_level }}</td>{% endfor %}
+        </tr>
+
+        <tr class="compare-section"><td colspan="{{ records | length + 1 }}">Clinical Scores</td></tr>
+        {% for key in ['meld', 'fib4', 'apri', 'child_pugh'] %}
+        <tr>
+          <td class="text-muted">{{ score_map[records[0].id][key].label }}</td>
+          {% for r in records %}
+            {% set s = score_map[r.id][key] %}
+            <td>
+              <span class="fw-semibold">{{ s.value if s.value is not none else 'N/A' }}</span>
+              <span class="text-muted small d-block">{{ s.band }}</span>
+            </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+
+        <tr class="compare-section"><td colspan="{{ records | length + 1 }}">Clinical Inputs</td></tr>
+        {% for field, meta in field_meta.items() %}
+        <tr>
+          <td class="text-muted">
+            {{ meta.label }}
+            {% if meta.unit and meta.type == 'number' %}<span class="text-muted small">({{ meta.unit }})</span>{% endif %}
+          </td>
+          {% for r in records %}
+            {% set value = r.clinical_inputs().get(field) %}
+            {% set baseline = records[0].clinical_inputs().get(field) %}
+            {% set changed = not loop.first and value != baseline %}
+            <td class="{{ 'cell-changed' if changed }}">
+              {% if value is none %}
+                <span class="text-muted">&mdash;</span>
+              {% elif meta.type == 'choice' %}
+                {% if field == 'stage' %}Stage {{ value | int }}{% else %}{{ choice_text.get(value, value) }}{% endif %}
+              {% else %}
+                {{ value }}
+              {% endif %}
+              {% if changed and meta.type == 'number' and value is not none and baseline is not none %}
+                {% set delta = value - baseline %}
+                <span class="delta {{ 'up' if delta > 0 else 'down' }}">
+                  <i class="bi {{ 'bi-arrow-up-short' if delta > 0 else 'bi-arrow-down-short' }}"></i>{{ '%.2f'|format(delta | abs) }}
+                </span>
+              {% endif %}
+            </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+
+        <tr class="compare-section"><td colspan="{{ records | length + 1 }}">Record</td></tr>
+        <tr>
+          <td class="text-muted">Entry method</td>
+          {% for r in records %}<td class="text-capitalize">{{ r.source }}</td>{% endfor %}
+        </tr>
+        <tr>
+          <td class="text-muted">Notes</td>
+          {% for r in records %}
+          <td class="small text-muted" style="max-width: 240px; white-space: normal;">
+            {{ r.doctor_notes | truncate(180) if r.doctor_notes else '—' }}
+          </td>
+          {% endfor %}
+        </tr>
+        <tr>
+          <td class="text-muted">Actions</td>
+          {% for r in records %}
+          <td class="text-nowrap">
+            <a href="{{ url_for('prediction_detail', prediction_id=r.id) }}"
+               class="btn btn-sm btn-outline-custom" title="View detail"><i class="bi bi-eye"></i></a>
+            <a href="{{ url_for('export_pdf', prediction_id=r.id) }}"
+               class="btn btn-sm btn-outline-custom" title="Download PDF"><i class="bi bi-file-earmark-pdf"></i></a>
+          </td>
+          {% endfor %}
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% elif selected_ids %}
+<div class="alert alert-warning">
+  <i class="bi bi-exclamation-triangle-fill"></i>
+  Those records could not be found in your history. Pick from the list above.
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+{% if records %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const styles = getComputedStyle(document.body);
+  Chart.defaults.color = styles.color;
+  Chart.defaults.font.family = "'Poppins', 'Segoe UI', sans-serif";
+
+  new Chart(document.getElementById("compareChart"), {
+    type: "bar",
+    data: {
+      labels: {{ records | map(attribute='patient_name') | list | tojson }},
+      datasets: [{
+        label: "Risk score (%)",
+        data: {{ records | map(attribute='probability_pct') | list | tojson }},
+        backgroundColor: {{ records | map(attribute='result') | list | tojson }}
+          .map(r => r === "High Risk" ? "#e8534f" : "#34a853"),
+        borderRadius: 6,
+        maxBarThickness: 64
+      }]
+    },
+    options: {
+      indexAxis: {{ '"y"' if records | length > 2 else '"x"' }},
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        {{ 'x' if records | length > 2 else 'y' }}: {
+          beginAtZero: true, max: 100,
+          grid: { color: styles.color.replace("rgb", "rgba").replace(")", ", 0.12)") }
+        },
+        {{ 'y' if records | length > 2 else 'x' }}: { grid: { display: false } }
+      }
+    }
+  });
+})();
+</script>
+{% endif %}
+<script>
+(function () {
+  const form = document.getElementById("compare-picker");
+  if (!form) return;
+  const checks = Array.from(form.querySelectorAll(".compare-check"));
+  const go = document.getElementById("compare-go");
+  const counter = document.getElementById("compare-count");
+  const MAX = 4;
+
+  function refresh() {
+    const checked = checks.filter(c => c.checked);
+    // Hard-block the 5th selection rather than silently dropping it server-side.
+    checks.forEach(c => { c.disabled = !c.checked && checked.length >= MAX; });
+    checks.forEach(c => c.closest(".compare-option").classList.toggle("selected", c.checked));
+    go.disabled = checked.length < 2;
+    counter.textContent = checked.length + " of " + MAX + " selected" +
+      (checked.length < 2 ? " — pick at least 2" : "");
+  }
+
+  checks.forEach(c => c.addEventListener("change", refresh));
+  refresh();
+})();
+</script>
+{% endblock %}

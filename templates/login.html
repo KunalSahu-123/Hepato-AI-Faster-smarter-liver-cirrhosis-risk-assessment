@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Log In - Hepato AI{% endblock %}
+{% block content %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-md-7 col-lg-5">
+      <div class="glass-card p-4 p-md-5 scroll-reveal">
+
+        <div class="text-center mb-4">
+          <svg width="48" height="48" viewBox="0 0 300 300" class="text-primary" aria-hidden="true"><path d="M155,65 C200,55 260,80 270,130 C280,180 265,230 230,250 C200,265 170,260 150,250 C130,240 120,220 125,195 C130,170 145,150 150,130 C155,110 150,85 155,65 Z" fill="currentColor"/><path d="M150,130 C145,150 130,170 105,175 C80,180 55,165 42,145 C30,125 35,100 50,85 C65,70 90,65 115,70 C140,75 150,100 150,130 Z" fill="currentColor"/></svg>
+          <h3 class="fw-bold mt-2">Welcome Back</h3>
+          <p class="text-muted mb-0">Log in to your Hepato AI account</p>
+        </div>
+
+        <form method="POST" class="needs-validation" novalidate>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="mb-3">
+            <label class="form-label-custom" for="email">Email Address</label>
+            <input type="email" id="email" name="email" value="{{ email or '' }}"
+                   class="form-control form-control-custom" required
+                   autocomplete="username" autofocus>
+            <div class="invalid-feedback">Please enter a valid email address.</div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label-custom" for="password">Password</label>
+            <div class="input-group">
+              <input type="password" id="password" name="password"
+                     class="form-control form-control-custom" required
+                     autocomplete="current-password">
+              <button class="btn btn-outline-custom" type="button" data-toggle-password="password"
+                      aria-label="Show or hide password">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+            <div class="invalid-feedback">Password is required.</div>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="remember" id="remember">
+              <label class="form-check-label text-muted small" for="remember">Keep me logged in</label>
+            </div>
+            <a href="{{ url_for('forgot_password') }}" class="small">Forgot password?</a>
+          </div>
+
+          <button type="submit" class="btn btn-primary-custom w-100">
+            <i class="bi bi-box-arrow-in-right"></i> Log In
+          </button>
+        </form>
+
+        <p class="text-center text-muted mt-4 mb-0">
+          Don't have an account? <a href="{{ url_for('register') }}">Sign up</a>
+        </p>
+
+        {% if app_env != 'production' %}
+        <div class="alert alert-light border mt-3 small mb-0">
+          <strong><i class="bi bi-info-circle"></i> Demo administrator</strong><br>
+          <code>{{ config.ADMIN_EMAIL }}</code> / <code>{{ config.ADMIN_PASSWORD }}</code>
+          <div class="text-muted mt-1" style="font-size: 0.72rem;">
+            Shown only outside production. Change these via <code>ADMIN_EMAIL</code> and
+            <code>ADMIN_PASSWORD</code> in your environment.
+          </div>
+        </div>
+        {% endif %}
+
+        <p class="text-muted text-center small mt-3 mb-0">
+          After {{ config.MAX_LOGIN_ATTEMPTS }} failed attempts an account is locked for
+          {{ config.LOGIN_LOCKOUT_MINUTES }} minutes.
+        </p>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.querySelectorAll("[data-toggle-password]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const field = document.getElementById(btn.dataset.togglePassword);
+    const showing = field.type === "text";
+    field.type = showing ? "password" : "text";
+    btn.querySelector("i").className = showing ? "bi bi-eye" : "bi bi-eye-slash";
+  });
+});
+</script>
+{% endblock %}

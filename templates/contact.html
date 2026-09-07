@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Contact Us - Hepato AI{% endblock %}
+{% block content %}
+
+<section class="py-5">
+  <div class="container">
+    <div class="text-center mb-5 scroll-reveal">
+      <h1 class="fw-bold">Get in Touch</h1>
+      <p class="text-muted mb-0">
+        Questions about the model, the dataset, or deploying Hepato AI in your own environment?
+      </p>
+    </div>
+
+    <div class="row g-4 justify-content-center">
+      <div class="col-lg-7">
+        <div class="glass-card p-4 p-md-5 scroll-reveal">
+          <h5 class="fw-bold mb-3">Send a Message</h5>
+          <form method="POST" class="needs-validation" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label-custom" for="name">Full Name</label>
+                <input type="text" id="name" name="name" value="{{ name or '' }}"
+                       class="form-control form-control-custom" required minlength="2" maxlength="120">
+                <div class="invalid-feedback">Please enter your name.</div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label-custom" for="email">Email Address</label>
+                <input type="email" id="email" name="email" value="{{ email or '' }}"
+                       class="form-control form-control-custom" required>
+                <div class="invalid-feedback">Please enter a valid email address.</div>
+              </div>
+              <div class="col-12">
+                <label class="form-label-custom" for="subject">
+                  Subject <span class="text-muted">(optional)</span>
+                </label>
+                <input type="text" id="subject" name="subject" value="{{ subject or '' }}"
+                       class="form-control form-control-custom" maxlength="200"
+                       placeholder="What is this about?">
+              </div>
+              <div class="col-12">
+                <label class="form-label-custom" for="message">Message</label>
+                <textarea id="message" name="message" rows="6" required minlength="10" maxlength="5000"
+                          class="form-control form-control-custom"
+                          placeholder="Tell us what you need...">{{ message or '' }}</textarea>
+                <div class="invalid-feedback">Please write at least 10 characters.</div>
+                <div class="form-text">
+                  <span id="char-count">0</span> / 5000 characters
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary-custom w-100 mt-4">
+              <i class="bi bi-send"></i> Send Message
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div class="col-lg-5">
+        <div class="glass-card p-4 scroll-reveal">
+          <h5 class="fw-bold mb-3">Project Information</h5>
+          <ul class="list-unstyled mb-0">
+            <li class="d-flex gap-3 py-2 border-bottom">
+              <i class="bi bi-mortarboard-fill text-primary fs-5"></i>
+              <div>
+                <div class="fw-semibold">Academic Project</div>
+                <div class="text-muted small">Final year B.Tech major project &mdash; Hepato AI</div>
+              </div>
+            </li>
+            <li class="d-flex gap-3 py-2 border-bottom">
+              <i class="bi bi-database-fill text-primary fs-5"></i>
+              <div>
+                <div class="fw-semibold">Dataset</div>
+                <div class="text-muted small">
+                  Mayo Clinic primary biliary cirrhosis trial (1974&ndash;1984), via the UCI ML
+                  repository.
+                </div>
+              </div>
+            </li>
+            <li class="d-flex gap-3 py-2 border-bottom">
+              <i class="bi bi-cpu-fill text-primary fs-5"></i>
+              <div>
+                <div class="fw-semibold">Technology</div>
+                <div class="text-muted small">
+                  Flask, SQLAlchemy, scikit-learn, Bootstrap 5, Chart.js, ReportLab, Tesseract OCR.
+                </div>
+              </div>
+            </li>
+            <li class="d-flex gap-3 py-2">
+              <i class="bi bi-activity text-primary fs-5"></i>
+              <div>
+                <div class="fw-semibold">System Status</div>
+                <div class="text-muted small">
+                  Live health probe at <a href="{{ url_for('health') }}"><code>/health</code></a>
+                </div>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <div class="disclaimer-box mt-4">
+          <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+          <strong>Not for emergencies.</strong> This form is not monitored for clinical urgencies.
+          If a patient needs care, contact emergency services or a hepatology service directly.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  const message = document.getElementById("message");
+  const counter = document.getElementById("char-count");
+  const update = () => { counter.textContent = message.value.length; };
+  message.addEventListener("input", update);
+  update();
+})();
+</script>
+{% endblock %}

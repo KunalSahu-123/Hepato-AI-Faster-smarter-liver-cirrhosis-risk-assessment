@@ -1,0 +1,345 @@
+{% extends "dashboard_base.html" %}
+{% set active_page = "dashboard" %}
+{% block title %}Dashboard - Hepato AI{% endblock %}
+{% block dashboard_content %}
+
+<div class="page-header">
+  <div>
+    {% if is_admin %}
+    <h1><i class="bi bi-shield-lock text-primary"></i> Admin Dashboard</h1>
+    <p>Platform-wide overview across all users and assessments.</p>
+    {% else %}
+    <h1>Welcome, {{ current_user.full_name.split(' ')[0] }}</h1>
+    <p>A snapshot of your prediction activity.</p>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-2">
+    {% if current_user.is_admin %}
+    <a href="{{ url_for('batch_predict') }}" class="btn btn-outline-custom">
+      <i class="bi bi-upload"></i> Batch Upload
+    </a>
+    {% endif %}
+    <a href="{{ url_for('prediction') }}" class="btn btn-primary-custom">
+      <i class="bi bi-plus-lg"></i> New Prediction
+    </a>
+  </div>
+</div>
+
+{% if is_admin %}
+{# ---- Admin: platform-level stats ---- #}
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-primary-grad">
+      <i class="bi bi-people-fill stat-icon"></i>
+      <div class="stat-value">{{ total_users }}</div>
+      <div>Total Users</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-success-grad">
+      <i class="bi bi-person-check-fill stat-icon"></i>
+      <div class="stat-value">{{ active_users }}</div>
+      <div>Active Users</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-warning-grad">
+      <i class="bi bi-clipboard2-data-fill stat-icon"></i>
+      <div class="stat-value">{{ total_patients }}</div>
+      <div>Total Assessments</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-danger-grad">
+      <i class="bi bi-exclamation-octagon-fill stat-icon"></i>
+      <div class="stat-value">{{ high_risk }}</div>
+      <div>High Risk Cases</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="metric-tile">
+      <div class="metric-value">{{ low_risk }}</div>
+      <div class="metric-name">Low Risk Cases</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="metric-tile">
+      <div class="metric-value">{{ (high_risk / total_patients * 100) | round(1) if total_patients else 0 }}%</div>
+      <div class="metric-name">High Risk Rate</div>
+    </div>
+  </div>
+  {% if total_patients %}
+  <div class="col-sm-6 col-lg-3">
+    <div class="metric-tile">
+      <div class="metric-value">{{ avg_probability }}%</div>
+      <div class="metric-name">Mean Risk Score</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="metric-tile">
+      <div class="metric-value">{{ avg_age }}</div>
+      <div class="metric-name">Mean Age (yrs)</div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{% if top_users %}
+<div class="glass-card p-4 mb-4">
+  <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart-fill text-primary"></i> Top Users by Assessments</h5>
+  <div class="table-responsive">
+    <table class="table table-custom align-middle mb-0">
+      <thead>
+        <tr><th>#</th><th>Name</th><th>Email</th><th>Assessments</th></tr>
+      </thead>
+      <tbody>
+        {% for name, email, cnt in top_users %}
+        <tr>
+          <td class="text-muted">{{ loop.index }}</td>
+          <td class="fw-semibold">{{ name }}</td>
+          <td class="text-muted small">{{ email }}</td>
+          <td><span class="badge bg-primary-grad">{{ cnt }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+{# ---- Regular user: personal stats ---- #}
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-primary-grad">
+      <i class="bi bi-people-fill stat-icon"></i>
+      <div class="stat-value">{{ total_patients }}</div>
+      <div>My Assessments</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-danger-grad">
+      <i class="bi bi-exclamation-octagon-fill stat-icon"></i>
+      <div class="stat-value">{{ high_risk }}</div>
+      <div>High Risk</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-success-grad">
+      <i class="bi bi-check-circle-fill stat-icon"></i>
+      <div class="stat-value">{{ low_risk }}</div>
+      <div>Low Risk</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card bg-warning-grad">
+      <i class="bi bi-graph-up stat-icon"></i>
+      <div class="stat-value">{{ (high_risk / total_patients * 100) | round(1) if total_patients else 0 }}%</div>
+      <div>High Risk Rate</div>
+    </div>
+  </div>
+</div>
+
+{% if total_patients %}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="metric-tile">
+      <div class="metric-value">{{ avg_probability }}%</div>
+      <div class="metric-name">Mean Risk Score</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="metric-tile">
+      <div class="metric-value">{{ avg_age }}</div>
+      <div class="metric-name">Mean Age (yrs)</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="metric-tile">
+      <div class="metric-value">{{ avg_bilirubin }}</div>
+      <div class="metric-name">Mean Bilirubin</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="metric-tile">
+      <div class="metric-value">{{ avg_albumin }}</div>
+      <div class="metric-name">Mean Albumin</div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+
+{# ---- Charts (shared layout, data differs by role) ---- #}
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="glass-card p-4">
+      <h5 class="fw-bold mb-3">Assessment Trend (Last 30 Days)</h5>
+      {% if trend_labels %}
+        <canvas id="trendChart" height="130"></canvas>
+      {% else %}
+        <p class="text-muted small mb-0">No assessments in the last 30 days.</p>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="glass-card p-4">
+      <h5 class="fw-bold mb-3">Risk Band Distribution</h5>
+      {% if band_counts %}
+        <canvas id="riskChart" height="130"></canvas>
+      {% else %}
+        <p class="text-muted small mb-0">No data yet.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if stage_counts %}
+<div class="glass-card p-4 mt-4">
+  <h5 class="fw-bold mb-3">Histologic Stage Distribution</h5>
+  <canvas id="stageChart" height="90"></canvas>
+</div>
+{% endif %}
+
+<div class="glass-card p-4 mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="fw-bold mb-0">Recent Assessments {% if is_admin %}<span class="text-muted small fw-normal">(all users)</span>{% endif %}</h5>
+    {% if recent %}<a href="{{ url_for('history') }}" class="small">View all</a>{% endif %}
+  </div>
+  {% if recent %}
+  <div class="table-responsive">
+    <table class="table table-custom align-middle">
+      <thead>
+        <tr>
+          <th>Patient</th>
+          {% if is_admin %}<th>Assessed By</th>{% endif %}
+          <th>Result</th><th>Confidence</th><th>Band</th><th>MELD</th><th>Date</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in recent %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ r.patient_name }}</div>
+            {% if r.patient_id %}<div class="text-muted small">{{ r.patient_id }}</div>{% endif %}
+          </td>
+          {% if is_admin %}
+          <td class="text-muted small">{{ r.user.full_name if r.user else 'Unknown' }}</td>
+          {% endif %}
+          <td><span class="badge {{ 'badge-risk-high' if r.result == 'High Risk' else 'badge-risk-low' }}">{{ r.result }}</span></td>
+          <td>{{ r.probability_pct }}%</td>
+          <td>{{ r.risk_level }}</td>
+          <td>{{ r.meld_score if r.meld_score is not none else '-' }}</td>
+          <td class="text-muted small">{{ r.created_at | humandate('%b %d, %Y') }}</td>
+          <td class="text-nowrap">
+            <a href="{{ url_for('prediction_detail', prediction_id=r.id) }}"
+               class="btn btn-sm btn-outline-custom" title="View detail"><i class="bi bi-eye"></i></a>
+            <a href="{{ url_for('export_pdf', prediction_id=r.id) }}"
+               class="btn btn-sm btn-outline-custom" title="Download PDF"><i class="bi bi-file-earmark-pdf"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <i class="bi bi-clipboard2-pulse"></i>
+    <h5>No assessments yet</h5>
+    <p class="mb-3">Run your first risk assessment to start building a history.</p>
+    <a href="{{ url_for('prediction') }}" class="btn btn-primary-custom">
+      <i class="bi bi-plus-lg"></i> New Prediction
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const styles = getComputedStyle(document.body);
+  const gridColour = styles.color.replace("rgb", "rgba").replace(")", ", 0.12)");
+  Chart.defaults.color = styles.color;
+  Chart.defaults.font.family = "'Poppins', 'Segoe UI', sans-serif";
+
+  const trendCanvas = document.getElementById("trendChart");
+  if (trendCanvas) {
+    new Chart(trendCanvas, {
+      type: "line",
+      data: {
+        labels: {{ trend_labels | tojson }},
+        datasets: [
+          {
+            label: "High Risk",
+            data: {{ trend_high | tojson }},
+            borderColor: "#e8534f",
+            backgroundColor: "rgba(232,83,79,0.14)",
+            tension: 0.35, fill: true, pointRadius: 3
+          },
+          {
+            label: "Low Risk",
+            data: {{ trend_low | tojson }},
+            borderColor: "#34a853",
+            backgroundColor: "rgba(52,168,83,0.14)",
+            tension: 0.35, fill: true, pointRadius: 3
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: "index", intersect: false },
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: gridColour } },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  const riskCanvas = document.getElementById("riskChart");
+  if (riskCanvas) {
+    const bands = {{ band_counts | tojson }};
+    const colours = { Critical: "#c62828", High: "#e8534f", Moderate: "#fbbc04", Low: "#34a853" };
+    const order = ["Critical", "High", "Moderate", "Low"].filter(b => b in bands);
+    new Chart(riskCanvas, {
+      type: "doughnut",
+      data: {
+        labels: order,
+        datasets: [{
+          data: order.map(b => bands[b]),
+          backgroundColor: order.map(b => colours[b] || "#dc2626"),
+          borderWidth: 0
+        }]
+      },
+      options: { responsive: true, plugins: { legend: { position: "bottom" } }, cutout: "58%" }
+    });
+  }
+
+  const stageCanvas = document.getElementById("stageChart");
+  if (stageCanvas) {
+    const stages = {{ stage_counts | tojson }};
+    const keys = Object.keys(stages).sort();
+    new Chart(stageCanvas, {
+      type: "bar",
+      data: {
+        labels: keys.map(k => "Stage " + k),
+        datasets: [{ label: "Patients", data: keys.map(k => stages[k]), backgroundColor: "#dc2626", borderRadius: 6 }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: gridColour } },
+          x: { grid: { display: false } }
+        }
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

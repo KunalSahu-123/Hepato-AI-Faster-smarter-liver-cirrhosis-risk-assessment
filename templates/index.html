@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% block title %}Hepato AI - AI Liver Cirrhosis Risk Assessment{% endblock %}
+{% block content %}
+
+<section class="hero-section">
+  <!-- Floating gradient orbs -->
+  <div class="hero-orb hero-orb-1"></div>
+  <div class="hero-orb hero-orb-2"></div>
+  <div class="hero-orb hero-orb-3"></div>
+
+  <div class="container">
+    <div class="row align-items-center">
+      <div class="col-lg-5 scroll-reveal from-left">
+        <span class="hero-badge">
+          <i class="bi bi-shield-check"></i>
+          {% if metrics %}Clinically Validated &middot; {{ (metrics.accuracy * 100) | round(1) }}% Accuracy &middot; Evidence-Based AI
+          {% else %}Evidence-Based AI &middot; Trusted by Medical Professionals{% endif %}
+        </span>
+        <h1 class="hero-title mt-3">
+          <span class="text-gradient">Faster, smarter</span> liver cirrhosis risk assessment.
+        </h1>
+        <p class="text-muted fs-5 mt-3">
+          Hepato AI reads 16 clinical markers &mdash; bilirubin, albumin, platelets, prothrombin time
+          and more &mdash; and returns a calibrated risk probability in under a second.
+        </p>
+        <div class="d-flex gap-3 mt-4 flex-wrap">
+          {% if current_user.is_authenticated %}
+          <a href="{{ url_for('prediction') }}" class="btn btn-primary-custom btn-lg">
+            <i class="bi bi-clipboard2-pulse"></i> Run a Prediction
+          </a>
+          <a href="{{ url_for('dashboard') }}" class="btn btn-outline-custom btn-lg">
+            <i class="bi bi-speedometer2"></i> My Dashboard
+          </a>
+          {% else %}
+          <a href="{{ url_for('register') }}" class="btn btn-primary-custom btn-lg">Get Started Free</a>
+          <a href="{{ url_for('about') }}" class="btn btn-outline-custom btn-lg">Learn More</a>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- 3D Liver illustration -->
+      <div class="col-8 col-sm-6 col-lg-3 mx-auto mx-lg-0 scroll-reveal scale-in">
+        <div class="liver-3d-wrap">
+          <div class="liver-pulse-ring"></div>
+          <div class="liver-pulse-ring"></div>
+          <div class="liver-pulse-ring"></div>
+          <div class="hero-particle"></div>
+          <div class="hero-particle"></div>
+          <div class="hero-particle"></div>
+          <div class="hero-particle"></div>
+          <div class="hero-particle"></div>
+          <div class="hero-particle"></div>
+          <div class="liver-3d">
+            <svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="liver-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#c0392b"/>
+                  <stop offset="40%" stop-color="#a93226"/>
+                  <stop offset="100%" stop-color="#7b241c"/>
+                </linearGradient>
+                <linearGradient id="liver-light" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="rgba(255,255,255,0.25)"/>
+                  <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+                </linearGradient>
+                <filter id="liver-shadow">
+                  <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#7b241c" flood-opacity="0.3"/>
+                </filter>
+                <radialGradient id="liver-glow" cx="35%" cy="35%" r="60%">
+                  <stop offset="0%" stop-color="rgba(231,76,60,0.3)"/>
+                  <stop offset="100%" stop-color="rgba(231,76,60,0)"/>
+                </radialGradient>
+              </defs>
+              <!-- Glow behind -->
+              <ellipse cx="150" cy="155" rx="110" ry="100" fill="url(#liver-glow)"/>
+              <!-- Right lobe -->
+              <path d="M155,65 C200,55 260,80 270,130 C280,180 265,230 230,250
+                       C200,265 170,260 150,250 C130,240 120,220 125,195
+                       C130,170 145,150 150,130 C155,110 150,85 155,65 Z"
+                    fill="url(#liver-grad)" filter="url(#liver-shadow)">
+                <animate attributeName="d" dur="4s" repeatCount="indefinite"
+                  values="M155,65 C200,55 260,80 270,130 C280,180 265,230 230,250 C200,265 170,260 150,250 C130,240 120,220 125,195 C130,170 145,150 150,130 C155,110 150,85 155,65 Z;
+                         M155,62 C202,53 262,78 272,128 C282,178 267,232 232,252 C202,267 172,262 152,252 C132,242 122,222 127,197 C132,172 147,152 152,132 C157,112 152,83 155,62 Z;
+                         M155,65 C200,55 260,80 270,130 C280,180 265,230 230,250 C200,265 170,260 150,250 C130,240 120,220 125,195 C130,170 145,150 150,130 C155,110 150,85 155,65 Z"/>
+              </path>
+              <!-- Left lobe -->
+              <path d="M150,130 C145,150 130,170 105,175 C80,180 55,165 42,145
+                       C30,125 35,100 50,85 C65,70 90,65 115,70 C140,75 150,100 150,130 Z"
+                    fill="url(#liver-grad)" filter="url(#liver-shadow)">
+                <animate attributeName="d" dur="4s" repeatCount="indefinite"
+                  values="M150,130 C145,150 130,170 105,175 C80,180 55,165 42,145 C30,125 35,100 50,85 C65,70 90,65 115,70 C140,75 150,100 150,130 Z;
+                         M152,128 C147,148 132,168 107,173 C82,178 57,163 44,143 C32,123 37,98 52,83 C67,68 92,63 117,68 C142,73 152,98 152,128 Z;
+                         M150,130 C145,150 130,170 105,175 C80,180 55,165 42,145 C30,125 35,100 50,85 C65,70 90,65 115,70 C140,75 150,100 150,130 Z"/>
+              </path>
+              <!-- Specular highlight -->
+              <path d="M170,90 C195,82 230,95 240,115 C245,125 240,130 230,125
+                       C220,120 200,105 180,100 C170,97 165,93 170,90 Z"
+                    fill="url(#liver-light)" opacity="0.6"/>
+              <path d="M75,100 C85,92 100,90 108,98 C112,102 108,108 100,108
+                       C92,108 80,105 75,100 Z"
+                    fill="url(#liver-light)" opacity="0.4"/>
+              <!-- Hepatic veins -->
+              <path d="M160,120 C175,140 195,170 210,200" stroke="rgba(120,50,40,0.5)" stroke-width="2" fill="none" stroke-linecap="round"/>
+              <path d="M160,120 C170,150 180,190 175,220" stroke="rgba(120,50,40,0.4)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+              <path d="M160,120 C150,145 140,175 135,195" stroke="rgba(120,50,40,0.4)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+              <!-- Gallbladder -->
+              <path d="M148,225 C145,235 140,248 135,255 C130,260 128,258 130,250
+                       C132,242 140,230 148,225 Z"
+                    fill="#27ae60" opacity="0.7"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-4 mt-5 mt-lg-0 scroll-reveal from-right">
+        <div class="glass-card p-4">
+          <div class="row g-3 text-center">
+            <div class="col-6">
+              <div class="stat-card bg-primary-grad">
+                <i class="bi bi-cpu stat-icon"></i>
+                <div class="stat-value"
+                     {% if metrics %}data-count-to="{{ (metrics.accuracy * 100) | round(1) }}" data-count-suffix="%" data-count-decimals="1"{% endif %}>
+                  {{ metrics.accuracy | pct if metrics else '—' }}
+                </div>
+                <div>Test Accuracy</div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="stat-card bg-success-grad">
+                <i class="bi bi-graph-up-arrow stat-icon"></i>
+                <div class="stat-value"
+                     {% if metrics %}data-count-to="{{ metrics.roc_auc | round(3) }}" data-count-decimals="3"{% endif %}>
+                  {{ '%.3f' | format(metrics.roc_auc) if metrics else '—' }}
+                </div>
+                <div>ROC-AUC Score</div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="stat-card bg-warning-grad">
+                <i class="bi bi-clock-history stat-icon"></i>
+                <div class="stat-value">&lt;1s</div>
+                <div>Prediction Time</div>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="stat-card bg-danger-grad">
+                <i class="bi bi-list-check stat-icon"></i>
+                <div class="stat-value"
+                     data-count-to="{{ field_meta | length }}" data-count-decimals="0">
+                  {{ field_meta | length }}
+                </div>
+                <div>Clinical Features</div>
+              </div>
+            </div>
+          </div>
+
+          {% if metrics %}
+          <p class="text-muted small text-center mt-3 mb-0">
+            Measured on {{ metrics.test_size }} held-out patients.
+            Recall {{ metrics.recall | pct }} &middot;
+            F1 {{ '%.3f' | format(metrics.f1_score) }}
+            {%- if metrics.calibration_applied %} &middot; calibrated{% endif %}.
+            <a href="{{ url_for('reports') if current_user.is_authenticated else url_for('login') }}">
+              Full report &rarr;
+            </a>
+          </p>
+          {% else %}
+          <div class="alert alert-warning small mt-3 mb-0">
+            <i class="bi bi-exclamation-triangle"></i>
+            <strong>No trained model found.</strong> Run
+            <code>python train_model.py</code> to see live figures.
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="disclaimer-box mt-3">
+          <i class="bi bi-exclamation-triangle-fill text-warning"></i>
+          Decision support only &mdash; <strong>not</strong> a medical diagnosis.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Wave: hero -> alt section -->
+<div class="wave-divider" style="background: var(--surface-solid);">
+  <svg viewBox="0 0 1440 60" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M0,0 C240,50 480,50 720,25 C960,0 1200,50 1440,30 L1440,0 L0,0 Z"
+          fill="var(--bg)" />
+  </svg>
+</div>
+
+<section class="section-alt section-lg">
+  <div class="container">
+    <div class="text-center mb-5 scroll-reveal">
+      <h2 class="fw-bold">How <span class="text-gradient">Hepato AI</span> Works</h2>
+      <p class="text-muted">Four steps from lab report to documented assessment</p>
+    </div>
+    <div class="row g-4">
+      {% set steps = [
+        ('bi-clipboard-data', 'bg-primary-grad', '1. Capture patient data',
+         'Type the values in, upload a CSV for a whole clinic list, or let OCR read a scanned lab report.'),
+        ('bi-diagram-3', 'bg-success-grad', '2. Calibrated model runs',
+         'A tuned Random Forest returns a probability that is calibrated, not just a raw vote share.'),
+        ('bi-search', 'bg-warning-grad', '3. See what drove it',
+         'Per-patient driver bars, flagged abnormal markers, plus MELD, FIB-4, APRI and Child-Pugh.'),
+        ('bi-file-earmark-medical', 'bg-danger-grad', '4. Document and share',
+         'Save to history, add clinical notes, export a PDF report or pull the whole set as CSV.'),
+      ] %}
+      {% for icon, grad, title, desc in steps %}
+      <div class="col-md-6 col-xl-3">
+        <div class="glass-card glow-hover p-4 h-100 text-center scroll-reveal stagger-{{ loop.index }}">
+          <div class="step-badge {{ grad }} mx-auto mb-3"><i class="bi {{ icon }} fs-3"></i></div>
+          <h5 class="fw-bold">{{ title }}</h5>
+          <p class="text-muted mb-0 small">{{ desc }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<!-- Wave: alt -> normal -->
+<div class="wave-divider">
+  <svg viewBox="0 0 1440 60" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M0,0 C360,55 720,55 1080,25 C1260,10 1380,40 1440,30 L1440,0 L0,0 Z"
+          fill="var(--surface-solid)" />
+  </svg>
+</div>
+
+<section class="section-lg">
+  <div class="container">
+    <div class="glass-card glow-hover p-4 p-md-5 scroll-reveal scale-in">
+      <div class="row g-4 align-items-center">
+        <div class="col-lg-5 scroll-reveal from-left">
+          <h2 class="fw-bold">Built to be <span class="text-gradient">questioned</span></h2>
+          <p class="text-muted">
+            A probability nobody can interrogate is not clinically useful. Every Hepato AI result ships
+            with the evidence behind it, so a clinician can agree or disagree on the merits.
+          </p>
+          <a href="{{ url_for('services') }}" class="btn btn-outline-custom">
+            <i class="bi bi-grid"></i> Explore all features
+          </a>
+        </div>
+        <div class="col-lg-7">
+          <div class="row g-3">
+            {% set highlights = [
+              ('bi-bezier2', 'Leave-one-out explanations',
+               'Each marker is swapped for the training median to measure how much it moved the score.'),
+              ('bi-calculator', 'Validated clinical scores',
+               'MELD, FIB-4, APRI and a partial Child-Pugh computed from the same inputs, with bands.'),
+              ('bi-layers', 'Batch and comparison',
+               'Score a CSV of patients at once, then compare up to four records side by side.'),
+              ('bi-shield-check', 'Auditable by design',
+               'Hashed passwords, CSRF protection, login lockout, and an append-only audit trail.'),
+            ] %}
+            {% for icon, title, desc in highlights %}
+            <div class="col-sm-6 scroll-reveal stagger-{{ loop.index }}">
+              <div class="d-flex gap-3">
+                <i class="bi {{ icon }} fs-4 text-primary"></i>
+                <div>
+                  <div class="fw-semibold">{{ title }}</div>
+                  <p class="text-muted small mb-0">{{ desc }}</p>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% if not current_user.is_authenticated %}
+<!-- Wave: normal -> alt -->
+<div class="wave-divider" style="background: var(--surface-solid);">
+  <svg viewBox="0 0 1440 60" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M0,0 C240,50 480,50 720,25 C960,0 1200,50 1440,30 L1440,0 L0,0 Z"
+          fill="var(--bg)" />
+  </svg>
+</div>
+
+<section class="section-alt section-lg">
+  <div class="container">
+    <div class="glass-card glow-hover p-4 p-md-5 text-center scroll-reveal scale-in">
+      <h3 class="fw-bold">Ready to try it?</h3>
+      <p class="text-muted mb-4">
+        Create an account to run assessments, keep a patient history and export reports.
+      </p>
+      <div class="d-flex gap-3 justify-content-center flex-wrap">
+        <a href="{{ url_for('register') }}" class="btn btn-primary-custom btn-lg">
+          <i class="bi bi-person-plus"></i> Create Free Account
+        </a>
+        <a href="{{ url_for('login') }}" class="btn btn-outline-custom btn-lg">
+          <i class="bi bi-box-arrow-in-right"></i> Log In
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}
