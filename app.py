@@ -127,6 +127,18 @@ def reset_predictor_cache():
     _predictor_error = None
 
 
+def _load_metrics_file(app):
+    """Read training metrics from the JSON file without loading the full model."""
+    metrics_path = app.config.get("METRICS_PATH", "")
+    if metrics_path and os.path.exists(metrics_path):
+        try:
+            with open(metrics_path, encoding="utf-8") as f:
+                return json.load(f)
+        except (ValueError, OSError):
+            pass
+    return {}
+
+
 def client_ip():
     forwarded = request.headers.get("X-Forwarded-For", "")
     if forwarded:
@@ -234,20 +246,12 @@ def register_routes(app):
     # ------------------------------------------------------------------
     @app.route("/")
     def index():
-        metrics = {}
-        try:
-            metrics = get_predictor().metrics
-        except ModelNotTrainedError:
-            pass
+        metrics = _load_metrics_file(app)
         return render_template("index.html", metrics=metrics)
 
     @app.route("/about")
     def about():
-        metrics = {}
-        try:
-            metrics = get_predictor().metrics
-        except ModelNotTrainedError:
-            pass
+        metrics = _load_metrics_file(app)
         return render_template("about.html", metrics=metrics)
 
     @app.route("/services")
@@ -300,14 +304,13 @@ def register_routes(app):
             checks["database"] = f"error: {e}"
             healthy = False
 
-        try:
-            get_predictor()
+        model_path = app.config.get("MODEL_PATH", "")
+        if os.path.exists(model_path):
             checks["model"] = "ok"
-        except ModelNotTrainedError as e:
-            checks["model"] = f"unavailable: {e}"
+        else:
+            checks["model"] = "file missing"
             healthy = False
 
-        # OCR is optional, so it never fails the health check.
         checks["ocr"] = "ok" if is_ocr_available() else "unavailable (optional)"
 
         return jsonify({
