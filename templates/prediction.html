@@ -390,7 +390,8 @@
 {% else %}
 {# ---- Input view (upload or manual entry) ---- #}
 
-{# Primary: Image upload area #}
+{# Primary: Image upload area (only when OCR is available) #}
+{% if ocr_available %}
 <div class="glass-card p-4 p-md-5 mb-4" id="upload-card">
   <div class="text-center mb-4">
     <div class="mb-3" style="font-size: 3rem; color: var(--primary);">
@@ -499,7 +500,10 @@
   </form>
 </div>
 
+{% endif %}{# end ocr_available #}
+
 {# Manual entry button + collapsible form #}
+{% if ocr_available %}
 <div class="text-center mb-4" id="manual-entry-toggle">
   <div class="d-inline-flex align-items-center gap-2 text-muted mb-2">
     <hr style="width: 60px; border-color: var(--border-color);"><span class="small">OR</span><hr style="width: 60px; border-color: var(--border-color);">
@@ -509,9 +513,10 @@
     <i class="bi bi-pencil-square"></i> Enter Values Manually
   </button>
 </div>
+{% endif %}
 
-{# Manual form (hidden by default) #}
-<div id="manual-form-card" class="glass-card p-4" style="display:none;">
+{# Manual form (hidden by default when OCR is available, shown otherwise) #}
+<div id="manual-form-card" class="glass-card p-4" {% if ocr_available %}style="display:none;"{% endif %}>
   <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
     <h5 class="fw-bold mb-0"><i class="bi bi-input-cursor-text text-primary"></i> Manual Data Entry</h5>
     <button type="button" class="btn btn-sm btn-outline-secondary" id="close-manual-btn">
