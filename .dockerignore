@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.env
+.git/
+.claude/
+*.zip
+node_modules/
+.pytest_cache/
+liver_cirrhosis.db
