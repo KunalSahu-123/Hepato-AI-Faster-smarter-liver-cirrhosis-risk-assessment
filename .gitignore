@@ -7,6 +7,7 @@ env/
 *.db
 *.sqlite3
 .env
+render-env.txt
 .DS_Store
 instance/
 *.log

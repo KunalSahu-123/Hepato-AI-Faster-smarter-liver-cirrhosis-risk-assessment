@@ -1,123 +1,77 @@
 {
   "model_name": "Ensemble (RF+GB+ET) (sigmoid-calibrated)",
-  "accuracy": 0.9041666666666667,
-  "precision": 0.84,
-  "recall": 0.9722222222222222,
-  "f1_score": 0.9012875536480687,
-  "roc_auc": 0.9713804713804713,
-  "average_precision": 0.9573960507804818,
-  "brier_score": 0.06503428319023044,
-  "brier_score_uncalibrated": 0.06631270249521544,
-  "cv_mean_accuracy": 0.9072916666666666,
-  "cv_std_accuracy": 0.02429563289518875,
+  "accuracy": 0.9550739957716702,
+  "precision": 0.957983193277311,
+  "recall": 0.9410377358490566,
+  "f1_score": 0.9494348602022605,
+  "roc_auc": 0.9862794133593581,
+  "average_precision": 0.9865547524125602,
+  "brier_score": 0.03611402092040981,
+  "brier_score_uncalibrated": 0.05607111587381144,
+  "cv_mean_accuracy": 0.9485789821546596,
+  "cv_std_accuracy": 0.004755084137106389,
   "best_params": {
-    "max_depth": null,
-    "max_features": "sqrt",
-    "min_samples_leaf": 1,
-    "min_samples_split": 2,
-    "n_estimators": 500
+    "n_estimators": 100,
+    "max_depth": 12,
+    "min_samples_leaf": 2,
+    "min_samples_split": 5
   },
   "calibration_applied": true,
   "best_family_by_cv": "RandomForest",
-  "test_size": 240,
-  "train_size": 960,
-  "classification_report": "              precision    recall  f1-score   support\n\n    Low Risk       0.97      0.85      0.91       132\n   High Risk       0.84      0.97      0.90       108\n\n    accuracy                           0.90       240\n   macro avg       0.91      0.91      0.90       240\nweighted avg       0.91      0.90      0.90       240\n",
+  "test_size": 1892,
+  "train_size": 7565,
+  "classification_report": "              precision    recall  f1-score   support\n\n    Low Risk       0.95      0.97      0.96      1044\n   High Risk       0.96      0.94      0.95       848\n\n    accuracy                           0.96      1892\n   macro avg       0.96      0.95      0.95      1892\nweighted avg       0.96      0.96      0.96      1892\n",
   "confusion_matrix": [
     [
-      112,
-      20
+      1009,
+      35
     ],
     [
-      3,
-      105
+      50,
+      798
     ]
   ],
   "feature_importance": {
-    "Stage": 0.5464851149175238,
-    "Copper": 0.0647405172965832,
-    "Alk_Phos": 0.044162596758887875,
-    "Bilirubin": 0.038798693581708676,
-    "Prothrombin": 0.037710854306303936,
-    "Albumin": 0.03741953431359127,
-    "SGOT": 0.02986380127562672,
-    "Hepatomegaly": 0.02746920363845999,
-    "Tryglicerides": 0.027039132572124574,
-    "Platelets": 0.026078052500689994,
-    "Spiders": 0.02425415073041966,
-    "Cholesterol": 0.024090009093181045,
-    "Edema": 0.02345224056358482,
-    "Ascites": 0.02184961269878036,
-    "Age": 0.02163212513642822,
-    "Sex": 0.004954360616105891
+    "Age": 0.0091,
+    "Sex": 0.0033,
+    "Ascites": 0.0037,
+    "Hepatomegaly": 0.0278,
+    "Spiders": 0.0039,
+    "Edema": 0.0333,
+    "Bilirubin": 0.3281,
+    "Cholesterol": 0.0645,
+    "Albumin": 0.0875,
+    "Copper": 0.139,
+    "Alk_Phos": 0.0607,
+    "SGOT": 0.0949,
+    "Tryglicerides": 0.0552,
+    "Platelets": 0.0122,
+    "Prothrombin": 0.0326,
+    "Stage": 0.0442
   },
-  "model_comparison": [
-    {
-      "model": "RandomForest",
-      "cv_f1": 0.9071,
-      "cv_f1_std": 0.0184,
-      "cv_roc_auc": 0.9513,
-      "cv_accuracy": 0.9083
-    },
-    {
-      "model": "GradientBoosting",
-      "cv_f1": 0.9035,
-      "cv_f1_std": 0.0117,
-      "cv_roc_auc": 0.957,
-      "cv_accuracy": 0.9073
-    },
-    {
-      "model": "ExtraTrees",
-      "cv_f1": 0.9009,
-      "cv_f1_std": 0.0248,
-      "cv_roc_auc": 0.9583,
-      "cv_accuracy": 0.9062
-    },
-    {
-      "model": "LogisticRegression",
-      "cv_f1": 0.8915,
-      "cv_f1_std": 0.0317,
-      "cv_roc_auc": 0.9562,
-      "cv_accuracy": 0.899
-    },
-    {
-      "model": "DecisionTree",
-      "cv_f1": 0.8895,
-      "cv_f1_std": 0.0238,
-      "cv_roc_auc": 0.9348,
-      "cv_accuracy": 0.8958
-    },
-    {
-      "model": "SVM",
-      "cv_f1": 0.8785,
-      "cv_f1_std": 0.0376,
-      "cv_roc_auc": 0.9493,
-      "cv_accuracy": 0.8875
-    }
-  ],
+  "model_comparison": [],
   "dataset_summary": {
-    "rows": 1200,
-    "features": 16,
-    "positive_rate": 0.45,
-    "missing_cells": 192
+    "total_rows": 9457,
+    "positive_rate": 0.44802791582954427
   },
   "feature_medians": {
-    "Age": 50.5,
+    "Age": 51.0,
     "Sex": 0.0,
     "Ascites": 0.0,
     "Hepatomegaly": 0.0,
     "Spiders": 0.0,
     "Edema": 0.0,
-    "Bilirubin": 3.725,
-    "Cholesterol": 342.25,
-    "Albumin": 3.5,
-    "Copper": 154.9,
-    "Alk_Phos": 2508.8500000000004,
-    "SGOT": 126.0,
-    "Tryglicerides": 145.55,
-    "Platelets": 221.4,
-    "Prothrombin": 11.475000000000001,
-    "Stage": 3.0
+    "Bilirubin": 1.3,
+    "Cholesterol": 369.5105634,
+    "Albumin": 3.52,
+    "Copper": 97.6483871,
+    "Alk_Phos": 1689.0,
+    "SGOT": 122.5563462,
+    "Tryglicerides": 124.7021277,
+    "Platelets": 249.0,
+    "Prothrombin": 10.6,
+    "Stage": 2.0
   },
   "sklearn_version": "1.9.0",
-  "trained_at": "2026-09-05 22:24:00 UTC"
+  "trained_at": "2026-09-11 16:59:24 UTC"
 }
